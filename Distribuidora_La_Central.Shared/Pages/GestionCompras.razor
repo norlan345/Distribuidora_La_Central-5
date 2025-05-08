@@ -1,0 +1,1905 @@
+﻿@page "/GestionCompras"
+@inject HttpClient Http
+@using System.Net.Http.Json
+
+@using System.ComponentModel
+
+@code {
+    // Variables de estado
+    private string activeTab = "registro";
+    private List<Compra> compras = new();
+    private List<Compra> comprasFiltradas = new();
+    private List<Compra> comprasFiltradasPaginadas = new();
+    private List<Producto> productos = new();
+    private List<Proveedor> proveedores = new();
+    private List<DetalleCompra> detallesCompra = new();
+    private List<DetalleCompra> detallesCompraSeleccionada = new();
+    private Compra nuevaCompra = new();
+    private Compra? compraSeleccionada;
+    private DetalleCompra nuevoDetalle = new();
+    private string? mensaje;
+    private bool showDetalleModal = false;
+
+    // Filtros y paginación
+    private int filtroProveedor = 0;
+    private string filtroEstado = "";
+    private DateTime? filtroFechaInicio;
+    private DateTime? filtroFechaFin;
+    private int paginaActual = 1;
+    private int itemsPorPagina = 10;
+    private string sortColumn = "fechaCompra";
+    private bool sortAscending = false;
+    private string searchTerm = "";
+
+    // Propiedades calculadas
+    private int totalPaginas => (int)Math.Ceiling((double)comprasFiltradas.Count / itemsPorPagina);
+    private decimal totalCompra => detallesCompra.Sum(d => d.Cantidad * d.PrecioUnitario);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatosIniciales();
+    }
+
+    private async Task CargarDatosIniciales()
+    {
+        try
+        {
+            // Cargar productos
+            productos = await Http.GetFromJsonAsync<List<Producto>>("api/Producto/GetAllProductos") ?? new();
+
+            // Cargar proveedores
+            proveedores = await Http.GetFromJsonAsync<List<Proveedor>>("api/Proveedor/obtener-todos") ?? new();
+
+            // Cargar compras
+            compras = await Http.GetFromJsonAsync<List<Compra>>("api/Compra/GetAllCompras") ?? new();
+            comprasFiltradas = compras;
+            ActualizarDatosPaginados();
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al cargar datos iniciales: {ex.Message}";
+        }
+    }
+
+    private void SwitchTab(string tab)
+    {
+        activeTab = tab;
+        if (tab == "historial") AplicarFiltros();
+    }
+
+    // Métodos para registro de compra
+    private void AgregarProductoDetalle()
+    {
+        if (nuevoDetalle.CodigoProducto == 0 || nuevoDetalle.Cantidad <= 0 || nuevoDetalle.PrecioUnitario <= 0)
+        {
+            mensaje = "Por favor complete todos los campos del producto";
+            return;
+        }
+
+        detallesCompra.Add(new DetalleCompra
+        {
+            CodigoProducto = nuevoDetalle.CodigoProducto,
+            Cantidad = nuevoDetalle.Cantidad,
+            PrecioUnitario = nuevoDetalle.PrecioUnitario
+        });
+
+        nuevoDetalle = new DetalleCompra();
+        mensaje = null;
+    }
+
+    private void EliminarProductoDetalle(DetalleCompra detalle)
+    {
+        detallesCompra.Remove(detalle);
+    }
+
+    private async Task GuardarCompra()
+    {
+        if (nuevaCompra.proveedor.idProveedor == 0)
+        {
+            mensaje = "Seleccione un proveedor";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(nuevaCompra.MetodoPago))
+        {
+            mensaje = "Seleccione un método de pago";
+            return;
+        }
+
+        if (detallesCompra.Count == 0)
+        {
+            mensaje = "Agregue al menos un producto";
+            return;
+        }
+
+        try
+        {
+            // Configurar la compra
+            nuevaCompra.fechaCompra = nuevaCompra.fechaCompra == DateTime.MinValue ? DateTime.Now : nuevaCompra.fechaCompra;
+            nuevaCompra.TotalCompra = totalCompra;
+            nuevaCompra.Estado = "Pendiente";
+
+            // Crear objeto para enviar
+            var compraRequest = new
+            {
+                Compra = new
+                {
+                    idProveedor = nuevaCompra.proveedor.idProveedor,
+                    fechaCompra = nuevaCompra.fechaCompra,
+                    TotalCompra = nuevaCompra.TotalCompra,
+                    Estado = nuevaCompra.Estado,
+                    FechaPago = (DateTime?)null,
+                    MetodoPago = nuevaCompra.MetodoPago
+                },
+                Detalles = detallesCompra.Select(d => new
+                {
+                    CodigoProducto = d.CodigoProducto,
+                    Cantidad = d.Cantidad,
+                    PrecioUnitario = d.PrecioUnitario,
+                    Subtotal = d.Cantidad * d.PrecioUnitario
+                }).ToList()
+            };
+
+            // Guardar la compra
+            var response = await Http.PostAsJsonAsync("api/Compra/AgregarCompra", compraRequest);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<CompraResponse>();
+
+                if (result != null)
+                {
+                    mensaje = $"✅ Compra #{result.idCompra} registrada correctamente";
+                    await CargarDatosIniciales();
+                    LimpiarFormulario();
+                }
+                else
+                {
+                    mensaje = "Error: No se pudo interpretar la respuesta del servidor";
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                mensaje = $"Error al guardar: {errorContent}";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error: {ex.Message}";
+        }
+    }
+
+    private void LimpiarFormulario()
+    {
+        nuevaCompra = new Compra();
+        detallesCompra = new List<DetalleCompra>();
+    }
+
+    private void CancelarCompra()
+    {
+        LimpiarFormulario();
+        mensaje = "Compra cancelada";
+    }
+
+    // Métodos para historial de compras
+    private async Task AplicarFiltros()
+    {
+        try
+        {
+            // Construir URL con parámetros de filtro
+            var url = $"api/Compra/GetFilteredCompras?";
+
+            if (filtroProveedor > 0)
+                url += $"proveedorId={filtroProveedor}&";
+
+            if (!string.IsNullOrEmpty(filtroEstado))
+                url += $"estado={filtroEstado}&";
+
+            if (filtroFechaInicio.HasValue)
+                url += $"fechaInicio={filtroFechaInicio.Value.ToString("yyyy-MM-dd")}&";
+
+            if (filtroFechaFin.HasValue)
+                url += $"fechaFin={filtroFechaFin.Value.ToString("yyyy-MM-dd")}&";
+
+            // Eliminar el último '&' si existe
+            url = url.TrimEnd('&');
+
+            // Llamada al API con filtros
+            var response = await Http.GetFromJsonAsync<List<CompraConProveedor>>(url);
+
+            if (response != null)
+            {
+                comprasFiltradas = response.Select(c => new Compra
+                    {
+                        idCompra = c.idCompra,
+                        proveedor = new Proveedor
+                        {
+                            idProveedor = c.idProveedor,
+                            nombre = c.Proveedor?.nombre ?? ""
+                        },
+                        fechaCompra = c.fechaCompra,
+                        TotalCompra = c.TotalCompra,
+                        Estado = c.Estado,
+                        FechaPago = c.FechaPago,
+                        MetodoPago = c.MetodoPago
+                    }).ToList();
+
+                paginaActual = 1;
+                ActualizarDatosPaginados();
+
+                mensaje = comprasFiltradas.Any() ? "" : "No se encontraron compras con los filtros aplicados";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al aplicar filtros: {ex.Message}";
+            comprasFiltradas = new();
+            ActualizarDatosPaginados();
+        }
+    }
+    public class CompraConProveedor
+    {
+        public int idCompra { get; set; }
+        public int idProveedor { get; set; }
+        public DateTime fechaCompra { get; set; }
+        public decimal TotalCompra { get; set; }
+        public string Estado { get; set; }
+        public DateTime? FechaPago { get; set; }
+        public string MetodoPago { get; set; }
+        public ProveedorInfo Proveedor { get; set; }
+    }
+
+
+
+
+    public class ProveedorInfo
+    {
+        public int idProveedor { get; set; }
+        public string nombre { get; set; }
+    }
+
+
+    private void ResetearFiltros()
+    {
+        filtroProveedor = 0;
+        filtroEstado = "";
+        filtroFechaInicio = null;
+        filtroFechaFin = null;
+        searchTerm = "";
+        AplicarFiltros();
+    }
+
+    private void ActualizarDatosPaginados()
+    {
+        var query = comprasFiltradas.AsQueryable();
+        
+        // Aplicar búsqueda
+        if (!string.IsNullOrEmpty(searchTerm))
+        {
+            query = query.Where(c => 
+                c.proveedor.nombre.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                c.idCompra.ToString().Contains(searchTerm) ||
+                c.fechaCompra.ToString("dd/MM/yyyy").Contains(searchTerm) ||
+                c.TotalCompra.ToString().Contains(searchTerm) ||
+                c.Estado.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                c.MetodoPago.Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
+        }
+        
+        // Aplicar ordenamiento
+        if (sortAscending)
+        {
+            query = sortColumn switch
+            {
+                "proveedor.nombre" => query.OrderBy(c => c.proveedor.nombre),
+                "idCompra" => query.OrderBy(c => c.idCompra),
+                "fechaCompra" => query.OrderBy(c => c.fechaCompra),
+                "TotalCompra" => query.OrderBy(c => c.TotalCompra),
+                _ => query.OrderBy(c => c.fechaCompra)
+            };
+        }
+        else
+        {
+            query = sortColumn switch
+            {
+                "proveedor.nombre" => query.OrderByDescending(c => c.proveedor.nombre),
+                "idCompra" => query.OrderByDescending(c => c.idCompra),
+                "fechaCompra" => query.OrderByDescending(c => c.fechaCompra),
+                "TotalCompra" => query.OrderByDescending(c => c.TotalCompra),
+                _ => query.OrderByDescending(c => c.fechaCompra)
+            };
+        }
+        
+        // Aplicar paginación
+        comprasFiltradasPaginadas = query
+            .Skip((paginaActual - 1) * itemsPorPagina)
+            .Take(itemsPorPagina)
+            .ToList();
+    }
+
+    private void OrdenarPor(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+
+        // Reemplazo del Dynamic LINQ
+        comprasFiltradas = sortAscending
+            ? comprasFiltradas.OrderBy(GetPropertyValue).ToList()
+            : comprasFiltradas.OrderByDescending(GetPropertyValue).ToList();
+
+        ActualizarDatosPaginados();
+    }
+    private object GetPropertyValue(Compra compra)
+    {
+        return sortColumn switch
+        {
+            "proveedor.nombre" => compra.proveedor.nombre,
+            "idCompra" => compra.idCompra,
+            "fechaCompra" => compra.fechaCompra,
+            "TotalCompra" => compra.TotalCompra,
+            _ => compra.fechaCompra
+        };
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? "";
+        paginaActual = 1;
+        ActualizarDatosPaginados();
+    }
+
+    private void OnItemsPerPageChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int newValue))
+        {
+            itemsPorPagina = newValue;
+            paginaActual = 1;
+            ActualizarDatosPaginados();
+        }
+    }
+
+    private void IrAPagina(int pagina)
+    {
+        paginaActual = pagina;
+        ActualizarDatosPaginados();
+    }
+
+    private void PaginaAnterior()
+    {
+        if (paginaActual > 1)
+        {
+            paginaActual--;
+            ActualizarDatosPaginados();
+        }
+    }
+
+    private void PaginaSiguiente()
+    {
+        if (paginaActual < totalPaginas)
+        {
+            paginaActual++;
+            ActualizarDatosPaginados();
+        }
+    }
+
+    private async Task MostrarDetalleCompra(int idCompra)
+    {
+        try
+        {
+            compraSeleccionada = compras.FirstOrDefault(c => c.idCompra == idCompra);
+
+            if (compraSeleccionada != null)
+            {
+                var detallesResponse = await Http.GetFromJsonAsync<List<DetalleCompra>>("api/DetalleCompra/GetAllDetallesCompra");
+                detallesCompraSeleccionada = detallesResponse?.Where(d => d.IdCompra == idCompra).ToList() ?? new();
+                showDetalleModal = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al cargar detalle: {ex.Message}";
+        }
+    }
+
+    private void CerrarDetalleModal()
+    {
+        showDetalleModal = false;
+        compraSeleccionada = null;
+        detallesCompraSeleccionada = new List<DetalleCompra>();
+    }
+
+    private async Task EditarCompra(int idCompra)
+    {
+        mensaje = "Función de edición en desarrollo";
+    }
+
+    private async Task MarcarComoPagada(int idCompra)
+    {
+        try
+        {
+            var response = await Http.PutAsync($"api/Compra/MarcarComoPagada/{idCompra}", null);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                mensaje = "✅ Compra marcada como pagada correctamente";
+                await CargarDatosIniciales();
+                CerrarDetalleModal();
+            }
+            else
+            {
+                mensaje = "Error al marcar la compra como pagada";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error: {ex.Message}";
+        }
+    }
+
+    private async Task ExportarAExcel()
+    {
+        try
+        {
+            mensaje = "Preparando exportación...";
+            
+            // Simular generación de Excel (implementar lógica real según biblioteca usada)
+            await Task.Delay(1000);
+            
+            mensaje = "✅ Exportación completada (simulación)";
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"Error al exportar: {ex.Message}";
+        }
+    }
+
+    private async Task ImprimirCompra(int idCompra)
+    {
+        mensaje = $"Preparando compra #{idCompra} para impresión (simulación)";
+        await Task.Delay(500);
+    }
+
+    private string GetMetodoPagoIcon(string metodo)
+    {
+        return metodo switch
+        {
+            "Efectivo" => "fas fa-money-bill-wave",
+            "Transferencia" => "fas fa-exchange-alt",
+            "Tarjeta" => "fas fa-credit-card",
+            "Cheque" => "fas fa-file-invoice-dollar",
+            _ => "fas fa-question-circle"
+        };
+    }
+
+    // Clases modelo
+    public class Compra
+    {
+        public int idCompra { get; set; }
+        public Proveedor proveedor { get; set; } = new Proveedor();
+        public DateTime fechaCompra { get; set; } = DateTime.Now;
+        public decimal TotalCompra { get; set; }
+        public string Estado { get; set; } = "Pendiente";
+        public DateTime? FechaPago { get; set; }
+        public string? MetodoPago { get; set; }
+    }
+
+    public class CompraResponse
+    {
+        public int idCompra { get; set; }
+        public string message { get; set; }
+    }
+
+    public class DetalleCompra
+    {
+        public int IdDetalleCompra { get; set; }
+        public int IdCompra { get; set; }
+        public int CodigoProducto { get; set; }
+        public int Cantidad { get; set; }
+        public decimal PrecioUnitario { get; set; }
+    }
+
+    public class Proveedor
+    {
+        public int idProveedor { get; set; }
+        public string nombre { get; set; } = string.Empty;
+    }
+
+    public class Producto
+    {
+        public int codigoProducto { get; set; }
+        public string descripcion { get; set; } = string.Empty;
+        public string detalle { get; set; } = string.Empty;
+        public int cantidad { get; set; }
+        public string categoria { get; set; } = string.Empty;
+        public decimal descuento { get; set; }
+        public decimal costo { get; set; }
+        public string bodega { get; set; } = string.Empty;
+        public int idProveedor { get; set; }
+    }
+}
+
+<!-- Interfaz de usuario -->
+<div class="compras-container">
+    <header class="app-header">
+        <div class="header-title">
+            <h1>LECTORALES</h1>
+            <h2>PRODUCCIÓN - MÓDULO DE COMPRAS</h2>
+        </div>
+        <div class="header-admin">
+            <h3>Administrador</h3>
+        </div>
+    </header>
+
+    <div class="tabs">
+        <button class="@(activeTab == "registro" ? "active" : "")" @onclick="@(() => SwitchTab("registro"))">Registro de Compras</button>
+        <button class="@(activeTab == "historial" ? "active" : "")" @onclick="@(() => SwitchTab("historial"))">Historial de Compras</button>
+    </div>
+
+    @if (activeTab == "registro")
+    {
+        <div class="registro-compra">
+            <div class="compra-header">
+                <h3>Nueva Compra</h3>
+                <div class="compra-info">
+                    <div class="form-group">
+                        <label>Proveedor:</label>
+                        <select @bind="nuevaCompra.proveedor.idProveedor" class="form-control">
+                            <option value="0">Seleccione un proveedor</option>
+                            @foreach (var prov in proveedores.OrderBy(p => p.nombre))
+                            {
+                                <option value="@prov.idProveedor">@prov.nombre</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Fecha:</label>
+                        <input type="date" @bind="nuevaCompra.fechaCompra" format="yyyy-MM-dd" class="form-control" />
+                    </div>
+                    <div class="form-group">
+                        <label>Método de Pago:</label>
+                        <select @bind="nuevaCompra.MetodoPago" class="form-control">
+                            <option value="">Seleccione...</option>
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Transferencia">Transferencia</option>
+                            <option value="Tarjeta">Tarjeta</option>
+                            <option value="Cheque">Cheque</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detalle-productos">
+                <h4>Detalle de Productos</h4>
+                <div class="agregar-producto">
+                    <select @bind="nuevoDetalle.CodigoProducto" class="form-control">
+                        <option value="0">Seleccione un producto</option>
+                        @foreach (var prod in productos.OrderBy(p => p.descripcion))
+                        {
+                            <option value="@prod.codigoProducto">@prod.descripcion</option>
+                        }
+                    </select>
+                    <input type="number" @bind="nuevoDetalle.Cantidad" placeholder="Cantidad" min="1" class="form-control" />
+                    <input type="number" @bind="nuevoDetalle.PrecioUnitario" placeholder="Precio Unitario" min="0.01" step="0.01" class="form-control" />
+                    <button class="btn btn-add" @onclick="AgregarProductoDetalle">
+                        <i class="fas fa-plus"></i> Agregar
+                    </button>
+                </div>
+
+                <div class="productos-table">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th>Cantidad</th>
+                                <th>Precio Unitario</th>
+                                <th>Subtotal</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (detallesCompra.Any())
+                            {
+                                @foreach (var detalle in detallesCompra)
+                                {
+                                    var producto = productos.FirstOrDefault(p => p.codigoProducto == detalle.CodigoProducto);
+                                    <tr>
+                                        <td>@(producto?.descripcion ?? "Producto no encontrado")</td>
+                                        <td>@detalle.Cantidad</td>
+                                        <td>C$@detalle.PrecioUnitario.ToString("N2")</td>
+                                        <td>C$@((detalle.Cantidad * detalle.PrecioUnitario).ToString("N2"))</td>
+                                        <td>
+                                            <button class="btn btn-delete" @onclick="() => EliminarProductoDetalle(detalle)">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="5" class="text-center">No hay productos agregados</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="resumen-compra">
+                <div class="total-section">
+                    <h4>Total Compra: C$@totalCompra.ToString("N2")</h4>
+                </div>
+                <div class="compra-actions">
+                    <button class="btn btn-cancel" @onclick="CancelarCompra">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button class="btn btn-save" @onclick="GuardarCompra">
+                        <i class="fas fa-save"></i> Guardar Compra
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+    else if (activeTab == "historial")
+    {
+        <div class="historial-compras">
+            <div class="filtros-container">
+                <h3>Filtrar Compras</h3>
+                <div class="filtros-row">
+                    <div class="filter-group">
+                        <label>Proveedor:</label>
+                        <select @bind="filtroProveedor" class="form-control">
+                            <option value="0">Todos los proveedores</option>
+                            @foreach (var prov in proveedores.OrderBy(p => p.nombre))
+                            {
+                                <option value="@prov.idProveedor">@prov.nombre</option>
+                            }
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Estado:</label>
+                        <select @bind="filtroEstado" class="form-control">
+                            <option value="">Todos los estados</option>
+                            <option value="Pendiente">Pendiente</option>
+                            <option value="Pagado">Pagado</option>
+                            <option value="Cancelado">Cancelado</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="filtros-row">
+                    <div class="filter-group">
+                        <label>Fecha desde:</label>
+                        <input type="date" @bind="filtroFechaInicio" format="yyyy-MM-dd" 
+                               class="form-control" max="@DateTime.Now.ToString("yyyy-MM-dd")" />
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Fecha hasta:</label>
+                        <input type="date" @bind="filtroFechaFin" format="yyyy-MM-dd" 
+                               class="form-control" max="@DateTime.Now.ToString("yyyy-MM-dd")" />
+                    </div>
+                    
+                    <div class="filter-actions">
+                        <button class="btn btn-primary" @onclick="AplicarFiltros">
+                            <i class="fas fa-filter"></i> Filtrar
+                        </button>
+                        <button class="btn btn-secondary" @onclick="ResetearFiltros">
+                            <i class="fas fa-undo"></i> Limpiar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="compras-summary">
+                <div class="summary-card">
+                    <div class="summary-icon total">
+                        <i class="fas fa-shopping-cart"></i>
+                    </div>
+                    <div class="summary-info">
+                        <h4>@comprasFiltradas.Count</h4>
+                        <p>Compras totales</p>
+                    </div>
+                </div>
+                
+                <div class="summary-card">
+                    <div class="summary-icon pendiente">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="summary-info">
+                        <h4>@comprasFiltradas.Count(c => c.Estado == "Pendiente")</h4>
+                        <p>Pendientes</p>
+                    </div>
+                </div>
+                
+                <div class="summary-card">
+                    <div class="summary-icon pagado">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="summary-info">
+                        <h4>@comprasFiltradas.Count(c => c.Estado == "Pagado")</h4>
+                        <p>Pagadas</p>
+                    </div>
+                </div>
+                
+                <div class="summary-card">
+                    <div class="summary-icon monto">
+                        <i class="fas fa-money-bill-wave"></i>
+                    </div>
+                    <div class="summary-info">
+                        <h4>C$ @comprasFiltradas.Sum(c => c.TotalCompra).ToString("N2")</h4>
+                        <p>Total general</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="historial-table-container">
+                <div class="table-header">
+                    <h3>Listado de Compras</h3>
+                    <div class="table-actions">
+                        <button class="btn btn-export" @onclick="ExportarAExcel">
+                            <i class="fas fa-file-excel"></i> Exportar
+                        </button>
+                        <input type="text" class="search-input" placeholder="Buscar..." 
+                               @bind="searchTerm" @oninput="OnSearchInput" />
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="compras-table">
+                        <thead>
+                            <tr>
+                                <th @onclick="@(() => OrdenarPor("idCompra"))">
+                                    ID @if (sortColumn == "idCompra") { <i class="fas @(sortAscending ? "fa-arrow-up" : "fa-arrow-down")"></i> }
+                                </th>
+                                <th @onclick="@(() => OrdenarPor("proveedor.nombre"))">
+                                    Proveedor @if (sortColumn == "proveedor.nombre") { <i class="fas @(sortAscending ? "fa-arrow-up" : "fa-arrow-down")"></i> }
+                                </th>
+                                <th @onclick="@(() => OrdenarPor("fechaCompra"))">
+                                    Fecha @if (sortColumn == "fechaCompra") { <i class="fas @(sortAscending ? "fa-arrow-up" : "fa-arrow-down")"></i> }
+                                </th>
+                                <th @onclick="@(() => OrdenarPor("TotalCompra"))">
+                                    Total @if (sortColumn == "TotalCompra") { <i class="fas @(sortAscending ? "fa-arrow-up" : "fa-arrow-down")"></i> }
+                                </th>
+                                <th>Estado</th>
+                                <th>Método Pago</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (comprasFiltradasPaginadas.Any())
+                            {
+                                @foreach (var compra in comprasFiltradasPaginadas)
+                                {
+                                    <tr>
+                                        <td>@compra.idCompra</td>
+                                        <td>@compra.proveedor.nombre</td>
+                                        <td>@compra.fechaCompra.ToString("dd/MM/yyyy")</td>
+                                        <td>C$ @compra.TotalCompra.ToString("N2")</td>
+                                        <td>
+                                            <span class="estado-badge @compra.Estado.ToLower()">
+                                                @compra.Estado
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="metodo-pago">
+                                                <i class="@GetMetodoPagoIcon(compra.MetodoPago)"></i>
+                                                @compra.MetodoPago
+                                            </span>
+                                        </td>
+                                        <td class="actions-cell">
+                                            <button class="btn btn-view" @onclick="() => MostrarDetalleCompra(compra.idCompra)" title="Ver detalle">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                            @if (compra.Estado == "Pendiente")
+                                            {
+                                                <button class="btn btn-edit" @onclick="() => EditarCompra(compra.idCompra)" title="Editar">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button class="btn btn-complete" @onclick="() => MarcarComoPagada(compra.idCompra)"
+                                                        title="Marcar como pagada">
+                                                    <i class="fas fa-check-circle"></i>
+                                                </button>
+                                            }
+                                            <button class="btn btn-print" @onclick="() => ImprimirCompra(compra.idCompra)" title="Imprimir">
+                                                <i class="fas fa-print"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="7" class="no-results">
+                                        <i class="fas fa-search"></i>
+                                        <p>No se encontraron compras con los filtros aplicados</p>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                
+                @if (totalPaginas > 1)
+                {
+                    <div class="pagination-container">
+                        <button class="pagination-btn" @onclick="() => PaginaAnterior()" disabled="@(paginaActual == 1)">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        
+                        @for (int i = 1; i <= totalPaginas; i++)
+                        {
+                            <button class="pagination-btn @(i == paginaActual ? "active" : "")" 
+                                    @onclick="() => IrAPagina(i)">
+                                @i
+                            </button>
+                        }
+                        
+                        <button class="pagination-btn" @onclick="() => PaginaSiguiente()" 
+                                disabled="@(paginaActual == totalPaginas)">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                        
+                        <span class="page-info">
+                            Mostrando @((paginaActual - 1) * itemsPorPagina + 1)-@Math.Min(paginaActual * itemsPorPagina, comprasFiltradas.Count) de @comprasFiltradas.Count registros
+                        </span>
+
+                        <select class="items-per-page" @bind="itemsPorPagina">
+                            <option value="10">10 por página</option>
+                            <option value="25">25 por página</option>
+                            <option value="50">50 por página</option>
+                            <option value="100">100 por página</option>
+                        </select>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (showDetalleModal)
+    {
+        <div class="modal-backdrop" @onclick="CerrarDetalleModal"></div>
+        <div class="detalle-modal">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <h3>Detalle de Compra #@compraSeleccionada?.idCompra</h3>
+                    <div class="compra-status">
+                        <span class="estado-badge @compraSeleccionada?.Estado?.ToLower()">@compraSeleccionada?.Estado</span>
+                        <span class="fecha">@compraSeleccionada?.fechaCompra.ToString("dd/MM/yyyy HH:mm")</span>
+                    </div>
+                </div>
+                <button class="close-btn" @onclick="CerrarDetalleModal">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="compra-info-grid">
+                    <div class="info-card">
+                        <h4>Proveedor</h4>
+                        <p>@compraSeleccionada?.proveedor.nombre</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>Método de Pago</h4>
+                        <p>
+                            <i class="@GetMetodoPagoIcon(compraSeleccionada?.MetodoPago)"></i>
+                            @compraSeleccionada?.MetodoPago
+                        </p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>Total Compra</h4>
+                        <p class="total-amount">C$ @compraSeleccionada?.TotalCompra.ToString("N2")</p>
+                    </div>
+                </div>
+                
+                <h4 class="section-title">Productos</h4>
+                <div class="productos-table-container">
+                    <table class="productos-table">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th>Código</th>
+                                <th>Cantidad</th>
+                                <th>P. Unitario</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var detalle in detallesCompraSeleccionada)
+                            {
+                                var producto = productos.FirstOrDefault(p => p.codigoProducto == detalle.CodigoProducto);
+                                <tr>
+                                    <td>@(producto?.descripcion ?? "Producto no encontrado")</td>
+                                    <td>@detalle.CodigoProducto</td>
+                                    <td>@detalle.Cantidad</td>
+                                    <td>C$ @detalle.PrecioUnitario.ToString("N2")</td>
+                                    <td>C$ @((detalle.Cantidad * detalle.PrecioUnitario).ToString("N2"))</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="4" class="text-right">Total:</td>
+                                <td>C$ @compraSeleccionada?.TotalCompra.ToString("N2")</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                
+                @if (compraSeleccionada?.Estado == "Pendiente")
+                {
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" @onclick="CerrarDetalleModal">
+                            <i class="fas fa-times"></i> Cerrar
+                        </button>
+                        <button class="btn btn-primary" @onclick="() => MarcarComoPagada(compraSeleccionada.idCompra)">
+                            <i class="fas fa-check-circle"></i> Marcar como Pagada
+                        </button>
+                        <button class="btn btn-print" @onclick="() => ImprimirCompra(compraSeleccionada.idCompra)">
+                            <i class="fas fa-print"></i> Imprimir
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" @onclick="CerrarDetalleModal">
+                            <i class="fas fa-times"></i> Cerrar
+                        </button>
+                        <button class="btn btn-print" @onclick="() => ImprimirCompra(compraSeleccionada.idCompra)">
+                            <i class="fas fa-print"></i> Imprimir
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(mensaje))
+    {
+        <div class="status-message @(mensaje.Contains("✅") ? "success" : "error")">
+            @mensaje
+            <button class="close-message" @onclick="() => mensaje = null">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    }
+</div>
+
+<style>
+    :root {
+        --primary-color: #4e73df;
+        --primary-dark: #2e59d9;
+        --secondary-color: #858796;
+        --success-color: #1cc88a;
+        --info-color: #36b9cc;
+        --warning-color: #f6c23e;
+        --danger-color: #e74a3b;
+        --light-color: #f8f9fc;
+        --dark-color: #5a5c69;
+        --gray-light: #d1d3e2;
+        --gray-medium: #b7b9cc;
+        --gray-dark: #7a7b85;
+    }
+
+    /* Estilos generales */
+    .compras-container {
+        font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        color: var(--dark-color);
+        line-height: 1.5;
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    /* Encabezado */
+    .app-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid var(--gray-light);
+    }
+
+    .header-title h1 {
+        color: var(--primary-color);
+        font-size: 28px;
+        font-weight: 800;
+        margin: 0;
+    }
+
+    .header-title h2 {
+        color: var(--dark-color);
+        font-size: 18px;
+        font-weight: 600;
+        margin: 5px 0 0 0;
+    }
+
+    .header-admin h3 {
+        color: var(--primary-color);
+        font-size: 20px;
+        font-weight: 700;
+        margin: 0;
+        padding: 8px 15px;
+        background-color: var(--light-color);
+        border-radius: 20px;
+    }
+
+    /* Pestañas */
+    .tabs {
+        display: flex;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--gray-light);
+    }
+
+    .tabs button {
+        padding: 12px 25px;
+        background-color: transparent;
+        border: none;
+        border-bottom: 3px solid transparent;
+        cursor: pointer;
+        font-weight: 700;
+        color: var(--gray-dark);
+        font-size: 15px;
+        transition: all 0.3s;
+    }
+
+    .tabs button:hover {
+        color: var(--primary-color);
+    }
+
+    .tabs button.active {
+        border-bottom-color: var(--primary-color);
+        color: var(--primary-color);
+        background-color: transparent;
+    }
+
+    /* Formulario de registro de compra */
+    .registro-compra {
+        background-color: white;
+        border-radius: 10px;
+        box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+        padding: 25px;
+        margin-bottom: 30px;
+    }
+
+    .compra-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid var(--gray-light);
+    }
+
+    .compra-header h3 {
+        margin: 0;
+        color: var(--dark-color);
+        font-size: 20px;
+        font-weight: 700;
+    }
+
+    .compra-info {
+        display: flex;
+        gap: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 15px;
+        min-width: 200px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: var(--dark-color);
+        font-size: 14px;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--gray-light);
+        border-radius: 4px;
+        font-size: 14px;
+        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    }
+
+    .form-control:focus {
+        border-color: var(--primary-color);
+        outline: 0;
+        box-shadow: 0 0 0 0.2rem rgba(78, 115, 223, 0.25);
+    }
+
+    /* Detalle de productos */
+    .detalle-productos {
+        margin-bottom: 20px;
+    }
+
+    .detalle-productos h4 {
+        font-size: 18px;
+        color: var(--dark-color);
+        margin-bottom: 15px;
+    }
+
+    .agregar-producto {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 15px;
+        align-items: flex-end;
+        flex-wrap: wrap;
+    }
+
+    .agregar-producto select,
+    .agregar-producto input {
+        flex: 1;
+        min-width: 150px;
+    }
+
+    .agregar-producto input {
+        max-width: 120px;
+    }
+
+    .btn-add {
+        padding: 10px 15px;
+        background-color: var(--success-color);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        transition: background-color 0.3s;
+    }
+
+    .btn-add:hover {
+        background-color: #17a673;
+    }
+
+    /* Tablas */
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+        font-size: 14px;
+    }
+
+    .table th, .table td {
+        padding: 12px 15px;
+        text-align: left;
+        border-bottom: 1px solid var(--gray-light);
+    }
+
+    .table th {
+        background-color: var(--light-color);
+        font-weight: 700;
+        color: var(--dark-color);
+    }
+
+    .table tr:hover {
+        background-color: rgba(78, 115, 223, 0.05);
+    }
+
+    .text-center {
+        text-align: center;
+    }
+
+    /* Botones */
+    .btn {
+        padding: 10px 15px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: all 0.3s;
+    }
+
+    .btn-primary {
+        background-color: var(--primary-color);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background-color: var(--primary-dark);
+    }
+
+    .btn-secondary {
+        background-color: var(--secondary-color);
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background-color: #6c757d;
+    }
+
+    .btn-success {
+        background-color: var(--success-color);
+        color: white;
+    }
+
+    .btn-success:hover {
+        background-color: #17a673;
+    }
+
+    .btn-info {
+        background-color: var(--info-color);
+        color: white;
+    }
+
+    .btn-info:hover {
+        background-color: #2c9faf;
+    }
+
+    .btn-warning {
+        background-color: var(--warning-color);
+        color: white;
+    }
+
+    .btn-warning:hover {
+        background-color: #dda20a;
+    }
+
+    .btn-danger {
+        background-color: var(--danger-color);
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background-color: #be2617;
+    }
+
+    .btn-delete {
+        background-color: transparent;
+        color: var(--danger-color);
+        padding: 5px;
+    }
+
+    .btn-delete:hover {
+        background-color: rgba(231, 74, 59, 0.1);
+    }
+
+    .btn-view {
+        background-color: var(--info-color);
+        color: white;
+        padding: 5px 8px;
+    }
+
+    .btn-view:hover {
+        background-color: #2c9faf;
+    }
+
+    .btn-edit {
+        background-color: var(--warning-color);
+        color: white;
+        padding: 5px 8px;
+    }
+
+    .btn-edit:hover {
+        background-color: #dda20a;
+    }
+
+    .btn-complete {
+        background-color: var(--success-color);
+        color: white;
+        padding: 5px 8px;
+    }
+
+    .btn-complete:hover {
+        background-color: #17a673;
+    }
+
+    .btn-print {
+        background-color: var(--danger-color);
+        color: white;
+        padding: 5px 8px;
+    }
+
+    .btn-print:hover {
+        background-color: #be2617;
+    }
+
+    .btn-export {
+        background-color: var(--success-color);
+        color: white;
+    }
+
+    .btn-export:hover {
+        background-color: #17a673;
+    }
+
+    .btn-cancel {
+        background-color: var(--secondary-color);
+        color: white;
+    }
+
+    .btn-cancel:hover {
+        background-color: #6c757d;
+    }
+
+    .btn-save {
+        background-color: var(--primary-color);
+        color: white;
+    }
+
+    .btn-save:hover {
+        background-color: var(--primary-dark);
+    }
+
+    /* Resumen de compra */
+    .resumen-compra {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 15px;
+        border-top: 1px solid var(--gray-light);
+    }
+
+    .total-section h4 {
+        font-size: 18px;
+        color: var(--dark-color);
+        margin: 0;
+        font-weight: 700;
+    }
+
+    .compra-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    /* Historial de compras */
+    .historial-compras {
+        background-color: white;
+        border-radius: 10px;
+        box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+        padding: 25px;
+    }
+
+    .filtros-container {
+        background-color: var(--light-color);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 25px;
+    }
+
+    .filtros-container h3 {
+        margin-top: 0;
+        margin-bottom: 15px;
+        color: var(--dark-color);
+        font-size: 18px;
+    }
+
+    .filtros-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        margin-bottom: 15px;
+    }
+
+    .filter-group {
+        flex: 1;
+        min-width: 200px;
+    }
+
+    .filter-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: var(--dark-color);
+        font-size: 14px;
+    }
+
+    .filter-actions {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+    }
+
+    .compras-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+
+    .summary-card {
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.1);
+        padding: 15px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        transition: transform 0.3s;
+    }
+
+    .summary-card:hover {
+        transform: translateY(-3px);
+    }
+
+    .summary-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        color: white;
+    }
+
+    .summary-icon.total { background-color: var(--primary-color); }
+    .summary-icon.pendiente { background-color: var(--warning-color); }
+    .summary-icon.pagado { background-color: var(--success-color); }
+    .summary-icon.monto { background-color: var(--danger-color); }
+
+    .summary-info h4 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 700;
+    }
+
+    .summary-info p {
+        margin: 0;
+        color: var(--gray-dark);
+        font-size: 14px;
+    }
+
+    .historial-table-container {
+        margin-top: 20px;
+    }
+
+    .table-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .table-header h3 {
+        margin: 0;
+        color: var(--dark-color);
+        font-size: 18px;
+    }
+
+    .table-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .search-input {
+        padding: 8px 15px;
+        border: 1px solid var(--gray-light);
+        border-radius: 4px;
+        width: 250px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+    }
+
+    .search-input:focus {
+        border-color: var(--primary-color);
+        outline: none;
+    }
+
+    .table-responsive {
+        overflow-x: auto;
+    }
+
+    .compras-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 14px;
+    }
+
+    .compras-table th {
+        background-color: var(--light-color);
+        color: var(--dark-color);
+        font-weight: 700;
+        padding: 12px 15px;
+        border-bottom: 1px solid var(--gray-light);
+        cursor: pointer;
+        position: relative;
+        white-space: nowrap;
+    }
+
+    .compras-table th:hover {
+        background-color: var(--gray-light);
+    }
+
+    .compras-table td {
+        padding: 12px 15px;
+        border-bottom: 1px solid var(--gray-light);
+        vertical-align: middle;
+    }
+
+    .estado-badge {
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-block;
+    }
+
+    .estado-badge.pendiente {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+
+    .estado-badge.pagado {
+        background-color: #d4edda;
+        color: #155724;
+    }
+
+    .estado-badge.cancelado {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+
+    .metodo-pago {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .actions-cell {
+        white-space: nowrap;
+    }
+
+    .no-results {
+        text-align: center;
+        padding: 30px;
+        color: var(--gray-dark);
+    }
+
+    .no-results i {
+        font-size: 40px;
+        margin-bottom: 10px;
+        color: var(--gray-light);
+    }
+
+    .no-results p {
+        margin: 0;
+    }
+
+    /* Paginación */
+    .pagination-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 5px;
+        margin-top: 20px;
+        flex-wrap: wrap;
+    }
+
+    .pagination-btn {
+        padding: 5px 10px;
+        border: 1px solid var(--gray-light);
+        background-color: white;
+        border-radius: 4px;
+        cursor: pointer;
+        min-width: 35px;
+        transition: all 0.3s;
+    }
+
+    .pagination-btn:hover {
+        background-color: var(--light-color);
+    }
+
+    .pagination-btn.active {
+        background-color: var(--primary-color);
+        color: white;
+        border-color: var(--primary-color);
+    }
+
+    .pagination-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .page-info {
+        margin: 0 15px;
+        color: var(--gray-dark);
+        font-size: 14px;
+    }
+
+    .items-per-page {
+        padding: 5px;
+        border: 1px solid var(--gray-light);
+        border-radius: 4px;
+        margin-left: 15px;
+        font-size: 14px;
+    }
+
+    /* Modal de detalle */
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1050;
+    }
+
+    .detalle-modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        width: 800px;
+        max-width: 95%;
+        max-height: 90vh;
+        overflow-y: auto;
+        z-index: 1051;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 20px;
+        background-color: var(--primary-color);
+        color: white;
+        border-radius: 8px 8px 0 0;
+    }
+
+    .modal-title h3 {
+        margin: 0;
+        font-size: 18px;
+    }
+
+    .compra-status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 5px;
+    }
+
+    .fecha {
+        font-size: 13px;
+        opacity: 0.8;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+        line-height: 1;
+        opacity: 0.7;
+        transition: opacity 0.3s;
+    }
+
+    .close-btn:hover {
+        opacity: 1;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .compra-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+
+    .info-card {
+        background-color: var(--light-color);
+        border-radius: 6px;
+        padding: 15px;
+    }
+
+    .info-card h4 {
+        margin: 0 0 5px 0;
+        font-size: 14px;
+        color: var(--gray-dark);
+    }
+
+    .info-card p {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .total-amount {
+        color: var(--primary-color);
+        font-size: 18px;
+    }
+
+    .section-title {
+        font-size: 16px;
+        color: var(--dark-color);
+        margin: 20px 0 15px 0;
+        padding-bottom: 5px;
+        border-bottom: 1px solid var(--gray-light);
+    }
+
+    .productos-table-container {
+        overflow-x: auto;
+    }
+
+    .productos-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+
+    .productos-table th,
+    .productos-table td {
+        padding: 10px 15px;
+        border-bottom: 1px solid var(--gray-light);
+    }
+
+    .productos-table th {
+        background-color: var(--light-color);
+        font-weight: 600;
+    }
+
+    .productos-table tfoot td {
+        font-weight: 600;
+        padding-top: 15px;
+    }
+
+    .text-right {
+        text-align: right;
+    }
+
+    .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px solid var(--gray-light);
+    }
+
+    /* Mensajes de estado */
+    .status-message {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        border-radius: 4px;
+        color: white;
+        font-weight: 600;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        z-index: 1100;
+        animation: slideIn 0.3s ease-out;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .status-message.success {
+        background-color: var(--success-color);
+    }
+
+    .status-message.error {
+        background-color: var(--danger-color);
+    }
+
+    .close-message {
+        background: none;
+        border: none;
+        color: white;
+        cursor: pointer;
+        padding: 0;
+        margin-left: 10px;
+    }
+
+    @@keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .filtros-row {
+            flex-direction: column;
+        }
+
+    @@media (max-width: 768px) {
+        .app-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .header-admin {
+            align-self: flex-end;
+        }
+        
+        .filtros-row {
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .filter-group {
+            min-width: 100%;
+        }
+        
+        .compras-summary {
+            grid-template-columns: 1fr 1fr;
+        }
+        
+        .table-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .table-actions {
+            width: 100%;
+            justify-content: space-between;
+        }
+        
+        .search-input {
+            width: 100%;
+        }
+        
+        .detalle-modal {
+            width: 95%;
+        }
+    }
+
+    @@media (max-width: 576px) {
+        .tabs button {
+            padding: 10px 15px;
+            font-size: 14px;
+        }
+        
+        .compras-summary {
+            grid-template-columns: 1fr;
+        }
+        
+        .agregar-producto {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        
+        .agregar-producto select,
+        .agregar-producto input {
+            width: 100%;
+            max-width: none;
+        }
+        
+        .compra-actions {
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .modal-actions {
+            flex-direction: column;
+        }
+    }
+</style>

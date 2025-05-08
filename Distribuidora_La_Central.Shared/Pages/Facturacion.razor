@@ -1,0 +1,82 @@
+﻿@page "/facturacion"
+
+<h3>Facturación</h3>
+
+<div class="facturacion-container">
+    <div class="facturacion-content">
+        <div class="vendedor-info">
+            <h4>Información del Vendedor</h4>
+            <label>Nombre del Vendedor:</label>
+            <select>
+                <option>Selecciona el vendedor</option>
+            </select>
+        </div>
+        <div class="productos">
+            <h4>Productos</h4>
+            <label>Código del producto:</label>
+            <input type="text" />
+            <label>Descripción del producto:</label>
+            <input type="text" />
+            <label>Precio Compra:</label>
+            <input type="text" />
+            <label>Precio Venta:</label>
+            <input type="text" />
+            <button>Añadir Producto</button>
+        </div>
+    </div>
+</div>
+
+<div class="productos-seleccionados">
+    <h4>Productos Seleccionados</h4>
+    <label>Cantidad seleccionada:</label>
+    <input type="text" />
+    <label>Descripción del producto:</label>
+    <input type="text" />
+    <label>Precio total:</label>
+    <input type="text" />
+    <div class="botones">
+        <button>Editar</button>
+        <button>Eliminar</button>
+    </div>
+    <div class="total">
+        <label>Total:</label>
+        <input type="text" placeholder="C$" />
+    </div>
+    <button>Facturar</button>
+</div>
+
+<style>
+    .facturacion-container, .productos-seleccionados {
+        border: 2px solid black;
+        padding: 15px;
+        background: white;
+        margin-bottom: 20px;
+    }
+
+    .facturacion-content {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .botones {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+    }
+
+    button {
+        padding: 5px 10px;
+        background: #ccc;
+        border: 1px solid black;
+        cursor: pointer;
+    }
+
+    .total {
+        margin-top: 10px;
+    }
+</style>
+
+@code {
+    // Código C# para futuras funcionalidades
+}
