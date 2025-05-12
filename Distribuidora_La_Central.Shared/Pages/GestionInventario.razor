@@ -17,9 +17,6 @@
         </div>
     </header>
 
-   
-     
-
     <!-- Sección de productos -->
     <section class="products-section">
         <div class="products-header">
@@ -30,6 +27,7 @@
                     <button class="search-button" @onclick="BuscarProductos">🔍</button>
                 </div>
                 <button class="add-button" @onclick="ShowAddForm">+ Agregar Producto</button>
+                <button class="add-button" @onclick="ShowAddCategoriaForm">+ Agregar Categoría</button>
             </div>
         </div>
 
@@ -67,7 +65,12 @@
                                 <td>@p.descuento.ToString("P1")</td>
                                 <td>C$@p.costo.ToString("N2")</td>
                                 <td>@p.items</td>
-                                <td>@p.idBodega</td>
+                                <td>
+                                    @{
+                                        var bodega = bodegas.FirstOrDefault(b => b.idBodega == p.idBodega);
+                                        @(bodega?.nombre ?? "N/A")
+                                    }
+                                </td>
                                 <td>
                                     <button class="action-btn edit-btn" @onclick="() => EditarProducto(p)">✏️</button>
                                     <button class="action-btn delete-btn" @onclick="() => EliminarProducto(p.codigoProducto)">🗑️</button>
@@ -137,8 +140,14 @@
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>ID Bodega:</label>
-                        <input type="number" @bind="productoActual.idBodega" />
+                        <label>Bodega:</label>
+                        <select @bind="productoActual.idBodega" class="form-control">
+                            <option value="0">Seleccione una bodega</option>
+                            @foreach (var bodega in bodegas.OrderBy(b => b.nombre))
+                            {
+                                <option value="@bodega.idBodega">@bodega.nombre</option>
+                            }
+                        </select>
                     </div>
                     <div class="form-group">
                         <label>Proveedor:</label>
@@ -160,6 +169,36 @@
         </div>
     }
 
+    <!-- Formulario para agregar categoría -->
+    @if (showCategoriaForm)
+    {
+        <div class="modal-backdrop" @onclick="HideCategoriaForm"></div>
+        <div class="add-product-form">
+            <div class="form-header">
+                <h3>Agregar Nueva Categoría</h3>
+                <button class="close-btn" @onclick="HideCategoriaForm">×</button>
+            </div>
+            <div class="form-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Nombre:</label>
+                        <input type="text" @bind="nuevaCategoria.nombre" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Descripción:</label>
+                        <input type="text" @bind="nuevaCategoria.descripcion" />
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button class="save-btn" @onclick="GuardarCategoria">Guardar</button>
+                    <button class="cancel-btn" @onclick="HideCategoriaForm">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    }
+
     <!-- Mensajes de estado -->
     @if (!string.IsNullOrEmpty(mensaje))
     {
@@ -170,22 +209,63 @@
 </div>
 
 @code {
+    public class Bodega
+    {
+        public int idBodega { get; set; }
+        public string nombre { get; set; }
+        public string ubicacion { get; set; }
+    }
+
+    public class Producto
+    {
+        public int codigoProducto { get; set; }
+        public string descripcion { get; set; }
+        public int cantidad { get; set; }
+        public int idCategoria { get; set; }
+        public decimal descuento { get; set; }
+        public decimal costo { get; set; }
+        public int items { get; set; }
+        public int idBodega { get; set; }
+        public int idProveedor { get; set; }
+    }
+
+    public class CategoriaProducto
+    {
+        public int idCategoria { get; set; }
+        public string nombre { get; set; }
+        public string descripcion { get; set; }
+    }
+
+    public class Proveedor
+    {
+        public int idProveedor { get; set; }
+        public string nombre { get; set; }
+        public string razonSocial { get; set; }
+        public string contacto { get; set; }
+        public string telefono { get; set; }
+        public DateTime diaIngreso { get; set; }
+    }
+
+    private List<Bodega> bodegas = new();
     private List<Producto> productos = new();
     private List<Producto> productosFiltrados = new();
     private List<Proveedor> proveedores = new();
-    private Producto productoActual = new();
     private List<CategoriaProducto> categoriaProductos = new();
+    private Producto productoActual = new();
+    private CategoriaProducto nuevaCategoria = new();
     private string mensaje = string.Empty;
     private string busqueda = string.Empty;
     private bool showForm = false;
+    private bool showCategoriaForm = false;
     private bool modoEditar = false;
     private int categoriaFiltro = 0;
 
     protected override async Task OnInitializedAsync()
     {
         await CargarProductos();
-        categoriaProductos = await Http.GetFromJsonAsync<List<CategoriaProducto>>("api/Producto/obtener-todas-categorias") ?? new();
-        proveedores = await Http.GetFromJsonAsync<List<Proveedor>>("api/Proveedor/obtener-todos") ?? new(); // Agrega esta línea
+        await CargarCategorias();
+        proveedores = await Http.GetFromJsonAsync<List<Proveedor>>("api/Proveedor/obtener-todos") ?? new();
+        await CargarBodegas();
     }
 
     private async Task CargarProductos()
@@ -201,27 +281,27 @@
         }
     }
 
+    private async Task CargarBodegas()
+    {
+        try
+        {
+            bodegas = await Http.GetFromJsonAsync<List<Bodega>>("api/Bodega/obtener-todos") ?? new();
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"❌ Error al cargar bodegas: {ex.Message}";
+        }
+    }
+
     private async Task CargarCategorias()
     {
         try
         {
-            var response = await Http.GetAsync("api/CategoriaProducto/obtener-todas-categorias");
-
-            if (response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync();
-                categoriaProductos = JsonSerializer.Deserialize<List<CategoriaProducto>>(content) ?? new();
-            }
-            else
-            {
-                mensaje = $"Error al cargar categorías: {response.StatusCode}";
-                categoriaProductos = new();
-            }
+            categoriaProductos = await Http.GetFromJsonAsync<List<CategoriaProducto>>("api/CategoriaProducto/obtener-todas-categorias") ?? new();
         }
         catch (Exception ex)
         {
-            mensaje = $"Error al cargar categorías: {ex.Message}";
-            categoriaProductos = new();
+            mensaje = $"❌ Error al cargar categorías: {ex.Message}";
         }
     }
 
@@ -236,21 +316,8 @@
         var termino = busqueda.ToLower();
         productosFiltrados = productos.Where(p =>
             p.descripcion.ToLower().Contains(termino) ||
-            p.codigoProducto.ToString().Contains(termino)) 
-            // p.items.TolString().Contaisn(termino))
+            p.codigoProducto.ToString().Contains(termino))
             .ToList();
-    }
-
-    private void FiltrarPorCategoria()
-    {
-        if (categoriaFiltro == 0)
-        {
-            productosFiltrados = productos;
-        }
-        else
-        {
-            productosFiltrados = productos.Where(p => p.idCategoria == categoriaFiltro).ToList();
-        }
     }
 
     private void ShowAddForm()
@@ -260,14 +327,23 @@
         modoEditar = false;
     }
 
-    public class Proveedor
+    private void ShowAddCategoriaForm()
     {
-        public int idProveedor { get; set; }
-        public string nombre { get; set; }
-        public string razonSocial { get; set; }
-        public string contacto { get; set; }
-        public string telefono { get; set; }
-        public DateTime diaIngreso { get; set; }
+        nuevaCategoria = new CategoriaProducto();
+        showCategoriaForm = true;
+    }
+
+    private void HideForm()
+    {
+        showForm = false;
+        productoActual = new Producto();
+        modoEditar = false;
+    }
+
+    private void HideCategoriaForm()
+    {
+        showCategoriaForm = false;
+        nuevaCategoria = new CategoriaProducto();
     }
 
     private void EditarProducto(Producto producto)
@@ -288,13 +364,6 @@
         modoEditar = true;
     }
 
-    private void HideForm()
-    {
-        showForm = false;
-        productoActual = new Producto();
-        modoEditar = false;
-    }
-
     private async Task GuardarProducto()
     {
         try
@@ -305,8 +374,6 @@
                 if (response.IsSuccessStatusCode)
                 {
                     mensaje = "✅ Producto actualizado con éxito";
-                    modoEditar = false;
-                    productoActual = new();
                     await CargarProductos();
                     HideForm();
                 }
@@ -321,7 +388,6 @@
                 if (response.IsSuccessStatusCode)
                 {
                     mensaje = "✅ Producto agregado con éxito";
-                    productoActual = new();
                     await CargarProductos();
                     HideForm();
                 }
@@ -329,6 +395,34 @@
                 {
                     mensaje = "❌ Error al agregar el producto";
                 }
+            }
+        }
+        catch (Exception ex)
+        {
+            mensaje = $"❌ Error: {ex.Message}";
+        }
+    }
+
+    private async Task GuardarCategoria()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(nuevaCategoria.nombre))
+            {
+                mensaje = "❌ El nombre de la categoría es requerido";
+                return;
+            }
+
+            var response = await Http.PostAsJsonAsync("api/CategoriaProducto/registrar-categoria", nuevaCategoria);
+            if (response.IsSuccessStatusCode)
+            {
+                mensaje = "✅ Categoría agregada con éxito";
+                await CargarCategorias();
+                HideCategoriaForm();
+            }
+            else
+            {
+                mensaje = $"❌ Error al agregar categoría: {await response.Content.ReadAsStringAsync()}";
             }
         }
         catch (Exception ex)
@@ -357,28 +451,7 @@
             mensaje = $"❌ Error: {ex.Message}";
         }
     }
-
-    public class Producto
-    {
-        public int codigoProducto { get; set; }
-        public string descripcion { get; set; }
-        public int cantidad { get; set; }
-        public int idCategoria { get; set; }
-        public decimal descuento { get; set; }
-        public decimal costo { get; set; }
-        public int items { get; set; }
-        public int idBodega { get; set; }
-        public int idProveedor { get; set; }
-    }
-
-    public class CategoriaProducto
-    {
-        public int idCategoria { get; set; }
-        public string nombre { get; set; }
-        public string descripcion { get; set; }
-    }
 }
-
 
 <style>
     /* Variables de color */
@@ -441,44 +514,6 @@
         font-size: 20px;
         font-weight: bold;
     }
-
-    /* Sección de categorías */
-    .categories-section {
-        margin-bottom: 30px;
-    }
-
-    .section-header {
-        margin-bottom: 20px;
-    }
-
-        .section-header h3 {
-            color: var(--dark-color);
-            font-size: 18px;
-            margin-bottom: 10px;
-            padding-bottom: 5px;
-            border-bottom: 1px solid var(--gray-medium);
-        }
-
-    .category-tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-    }
-
-    .tag {
-        background-color: var(--gray-light);
-        color: var(--dark-color);
-        padding: 5px 15px;
-        border-radius: 20px;
-        font-size: 14px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-        .tag:hover {
-            background-color: var(--secondary-color);
-            color: var(--light-color);
-        }
 
     /* Sección de productos */
     .products-section {
@@ -607,7 +642,7 @@
             background-color: rgba(244, 67, 54, 0.1);
         }
 
-    /* Formulario para agregar/editar producto */
+    /* Formularios modales */
     .add-product-form {
         position: fixed;
         top: 50%;
@@ -750,11 +785,6 @@
 
     .error {
         background-color: var(--error-color);
-    }
-
-    .warning {
-        background-color: var(--warning-color);
-        color: var(--dark-color);
     }
 
     /* Fondo semitransparente cuando el formulario está abierto */
