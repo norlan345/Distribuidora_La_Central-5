@@ -746,9 +746,7 @@
                 <div class="table-header">
                     <h3>Listado de Compras</h3>
                     <div class="table-actions">
-                        <button class="btn btn-export" @onclick="ExportarAExcel">
-                            <i class="fas fa-file-excel"></i> Exportar
-                        </button>
+                        
                         <input type="text" class="search-input" placeholder="Buscar..." 
                                @bind="searchTerm" @oninput="OnSearchInput" />
                     </div>
@@ -797,22 +795,25 @@
                                             </span>
                                         </td>
                                         <td class="actions-cell">
+                                            <!-- Ver detalle -->
                                             <button class="btn btn-view" @onclick="() => MostrarDetalleCompra(compra.idCompra)" title="Ver detalle">
-                                                <i class="fas fa-eye"></i>
+                                                👁️
                                             </button>
+
                                             @if (compra.Estado == "Pendiente")
                                             {
+                                                <!-- Editar -->
                                                 <button class="btn btn-edit" @onclick="() => EditarCompra(compra.idCompra)" title="Editar">
-                                                    <i class="fas fa-edit"></i>
+                                                    ✏️
                                                 </button>
-                                                <button class="btn btn-complete" @onclick="() => MarcarComoPagada(compra.idCompra)"
-                                                        title="Marcar como pagada">
-                                                    <i class="fas fa-check-circle"></i>
+
+                                                <!-- Marcar como pagada -->
+                                                <button class="btn btn-complete" @onclick="() => MarcarComoPagada(compra.idCompra)" title="Marcar como pagada">
+                                                    ✅
                                                 </button>
                                             }
-                                            <button class="btn btn-print" @onclick="() => ImprimirCompra(compra.idCompra)" title="Imprimir">
-                                                <i class="fas fa-print"></i>
-                                            </button>
+
+                                          
                                         </td>
                                     </tr>
                                 }

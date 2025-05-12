@@ -59,19 +59,46 @@ namespace Distribuidora_La_Central.Web.Controllers
             }
         }
 
-        [HttpGet("{id}")]
-        public IActionResult GetProducto(int id)
+        [HttpGet("BuscarProducto")]
+        public IActionResult BuscarProducto(
+      [FromQuery] int? id = null,
+      [FromQuery] int? items = null,
+      [FromQuery] string? descripcion = null)
         {
             try
             {
                 using SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                SqlCommand cmd = new SqlCommand("SELECT * FROM Producto WHERE codigoProducto = @id", con);
-                cmd.Parameters.AddWithValue("@id", id);
-
                 con.Open();
+
+                string query = "SELECT * FROM Producto WHERE 1=1";
+                var parameters = new List<SqlParameter>();
+
+                if (id.HasValue)
+                {
+                    query += " AND codigoProducto = @id";
+                    parameters.Add(new SqlParameter("@id", id));
+                }
+
+                if (items.HasValue)
+                {
+                    query += " AND items = @items";
+                    parameters.Add(new SqlParameter("@items", items));
+                }
+
+                if (!string.IsNullOrWhiteSpace(descripcion))
+                {
+                    query += " AND descripcion LIKE @descripcion";
+                    parameters.Add(new SqlParameter("@descripcion", $"%{descripcion}%"));
+                }
+
+                SqlCommand cmd = new SqlCommand(query, con);
+                cmd.Parameters.AddRange(parameters.ToArray());
+
                 SqlDataReader reader = cmd.ExecuteReader();
 
-                if (reader.Read())
+                List<Producto> productos = new List<Producto>();
+
+                while (reader.Read())
                 {
                     Producto producto = new Producto
                     {
@@ -85,15 +112,20 @@ namespace Distribuidora_La_Central.Web.Controllers
                         descuento = reader["descuento"] != DBNull.Value ? Convert.ToDecimal(reader["descuento"]) : 0m,
                         idBodega = reader["idBodega"] != DBNull.Value ? Convert.ToInt32(reader["idBodega"]) : 0
                     };
-                    return Ok(producto);
+                    productos.Add(producto);
                 }
-                return NotFound(new { StatusCode = 404, Message = "Producto no encontrado" });
+
+                if (productos.Any())
+                    return Ok(productos);
+                else
+                    return NotFound(new { StatusCode = 404, Message = "No se encontraron productos con los criterios proporcionados" });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { StatusCode = 500, Message = "Error al obtener el producto", Error = ex.Message });
+                return StatusCode(500, new { StatusCode = 500, Message = "Error al buscar productos", Error = ex.Message });
             }
         }
+
 
         [HttpPost]
         [Route("RegistrarProducto")]

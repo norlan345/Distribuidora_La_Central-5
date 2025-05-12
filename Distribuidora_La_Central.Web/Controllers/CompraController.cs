@@ -157,44 +157,55 @@ namespace Distribuidora_La_Central.Web.Controllers
             public int idProveedor { get; set; }
             public string nombre { get; set; }
         }
-
         [HttpGet]
         [Route("GetAllCompras")]
-        public string GetCompras()
+        public IActionResult GetAllCompras()
         {
-            SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection").ToString());
-            SqlDataAdapter da = new SqlDataAdapter("SELECT * FROM Compra;", con);
-            DataTable dt = new DataTable();
-            da.Fill(dt);
-            List<Compra> compraList = new List<Compra>();
-            Response response = new Response();
-
-            if (dt.Rows.Count > 0)
+            try
             {
+                using SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+                con.Open();
+
+                string query = @"SELECT c.*, p.nombre AS ProveedorNombre 
+                         FROM Compra c
+                         LEFT JOIN Proveedor p ON c.idProveedor = p.idProveedor
+                         ORDER BY c.fechaCompra DESC";
+
+                using SqlCommand cmd = new SqlCommand(query, con);
+                SqlDataAdapter da = new SqlDataAdapter(cmd);
+                DataTable dt = new DataTable();
+                da.Fill(dt);
+
+                List<CompraConProveedor> compraList = new List<CompraConProveedor>();
+
                 for (int i = 0; i < dt.Rows.Count; i++)
                 {
-                    Compra compra = new Compra();
-                    compra.idCompra = Convert.ToInt32(dt.Rows[i]["idCompra"]);
-                    compra.idProveedor = Convert.ToInt32(dt.Rows[i]["idProveedor"]);
-                    compra.fechaCompra = Convert.ToDateTime(dt.Rows[i]["fechaCompra"]);
-                    compra.TotalCompra = Convert.ToDecimal(dt.Rows[i]["TotalCompra"]);
-                    compra.Estado = Convert.ToString(dt.Rows[i]["Estado"]);
-                  
-                    compra.FechaPago = dt.Rows[i]["FechaPago"] != DBNull.Value ? Convert.ToDateTime(dt.Rows[i]["FechaPago"]) : (DateTime?)null;
-                    compra.MetodoPago = Convert.ToString(dt.Rows[i]["MetodoPago"]);
+                    var compra = new CompraConProveedor
+                    {
+                        idCompra = Convert.ToInt32(dt.Rows[i]["idCompra"]),
+                        idProveedor = Convert.ToInt32(dt.Rows[i]["idProveedor"]),
+                        fechaCompra = Convert.ToDateTime(dt.Rows[i]["fechaCompra"]),
+                        TotalCompra = Convert.ToDecimal(dt.Rows[i]["TotalCompra"]),
+                        Estado = Convert.ToString(dt.Rows[i]["Estado"]),
+                        FechaPago = dt.Rows[i]["FechaPago"] != DBNull.Value ? Convert.ToDateTime(dt.Rows[i]["FechaPago"]) : (DateTime?)null,
+                        MetodoPago = Convert.ToString(dt.Rows[i]["MetodoPago"]),
+                        Proveedor = new ProveedorInfo
+                        {
+                            idProveedor = Convert.ToInt32(dt.Rows[i]["idProveedor"]),
+                            nombre = Convert.ToString(dt.Rows[i]["ProveedorNombre"])
+                        }
+                    };
                     compraList.Add(compra);
                 }
-            }
 
-            if (compraList.Count > 0)
-                return JsonConvert.SerializeObject(compraList);
-            else
+                return Ok(compraList);
+            }
+            catch (Exception ex)
             {
-                response.StatusCode = 100;
-                response.ErrorMessage = "No data found";
-                return JsonConvert.SerializeObject(response);
+                return StatusCode(500, new { error = $"Error al obtener compras: {ex.Message}" });
             }
         }
+
         [HttpPost]
         [Route("AgregarCompra")]
         public IActionResult AgregarCompra([FromBody] CompraConDetalles compraConDetalles)

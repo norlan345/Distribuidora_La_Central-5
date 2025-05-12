@@ -17,27 +17,8 @@
         </div>
     </header>
 
-    <!-- Sección de categorías -->
-    <section class="categories-section">
-        <div class="section-header">
-            <h3>Categorías de inventario</h3>
-            <div class="category-tags">
-                <span class="tag">Proveedores</span>
-                <span class="tag">Tipos recolectivos</span>
-            </div>
-        </div>
-
-        <div class="section-header">
-            <h3>ALIMENTOS</h3>
-            <div class="category-tags">
-                <span class="tag">BEBIDAS</span>
-                <span class="tag">BEBIDAS ALCOHÓLICAS</span>
-                <span class="tag">CUIDADO PERSONAL</span>
-                <span class="tag">ELECTRÓNICA</span>
-                <span class="tag">FARMACIA</span>
-            </div>
-        </div>
-    </section>
+   
+     
 
     <!-- Sección de productos -->
     <section class="products-section">
@@ -160,8 +141,14 @@
                         <input type="number" @bind="productoActual.idBodega" />
                     </div>
                     <div class="form-group">
-                        <label>ID Proveedor:</label>
-                        <input type="number" @bind="productoActual.idProveedor" />
+                        <label>Proveedor:</label>
+                        <select @bind="productoActual.idProveedor" class="form-control">
+                            <option value="0">Seleccione un proveedor</option>
+                            @foreach (var prov in proveedores.OrderBy(p => p.nombre))
+                            {
+                                <option value="@prov.idProveedor">@prov.nombre</option>
+                            }
+                        </select>
                     </div>
                 </div>
 
@@ -185,6 +172,7 @@
 @code {
     private List<Producto> productos = new();
     private List<Producto> productosFiltrados = new();
+    private List<Proveedor> proveedores = new();
     private Producto productoActual = new();
     private List<CategoriaProducto> categoriaProductos = new();
     private string mensaje = string.Empty;
@@ -197,6 +185,7 @@
     {
         await CargarProductos();
         categoriaProductos = await Http.GetFromJsonAsync<List<CategoriaProducto>>("api/Producto/obtener-todas-categorias") ?? new();
+        proveedores = await Http.GetFromJsonAsync<List<Proveedor>>("api/Proveedor/obtener-todos") ?? new(); // Agrega esta línea
     }
 
     private async Task CargarProductos()
@@ -247,7 +236,8 @@
         var termino = busqueda.ToLower();
         productosFiltrados = productos.Where(p =>
             p.descripcion.ToLower().Contains(termino) ||
-            p.codigoProducto.ToString().Contains(termino))
+            p.codigoProducto.ToString().Contains(termino)) 
+            // p.items.TolString().Contaisn(termino))
             .ToList();
     }
 
@@ -268,6 +258,16 @@
         productoActual = new Producto();
         showForm = true;
         modoEditar = false;
+    }
+
+    public class Proveedor
+    {
+        public int idProveedor { get; set; }
+        public string nombre { get; set; }
+        public string razonSocial { get; set; }
+        public string contacto { get; set; }
+        public string telefono { get; set; }
+        public DateTime diaIngreso { get; set; }
     }
 
     private void EditarProducto(Producto producto)
