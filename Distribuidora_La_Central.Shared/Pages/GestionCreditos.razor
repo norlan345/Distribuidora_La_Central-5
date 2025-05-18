@@ -1,0 +1,417 @@
+﻿@page "/GestionCreditos"
+@using System.Net.Http
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+
+<div class="container-fluid px-4">
+    <div class="card mb-4 shadow">
+        <div class="card-header bg-primary text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h3 class="mb-0"><i class="fas fa-credit-card me-2"></i>Gestión de Créditos</h3>
+                <button class="btn btn-light btn-sm" @onclick="MostrarFormulario">
+                    <i class="fas fa-plus me-1"></i> Nuevo Crédito
+                </button>
+            </div>
+        </div>
+
+        <div class="card-body">
+            <!-- Filtros -->
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <input type="text" class="form-control" placeholder="Buscar..." @bind="filtroBusqueda" />
+                        <button class="btn btn-outline-primary" @onclick="BuscarCreditos">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <select class="form-select" @bind="filtroEstado">
+                        <option value="">Todos los estados</option>
+                        <option value="Activo">Activos</option>
+                        <option value="Vencido">Vencidos</option>
+                        <option value="Pagado">Pagados</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <input type="date" class="form-control" @bind="filtroFecha" />
+                </div>
+            </div>
+
+            <!-- Estado de carga -->
+            @if (cargando)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <p class="mt-2">Cargando créditos...</p>
+                </div>
+            }
+            else if (!listaCreditos.Any())
+            {
+                <div class="alert alert-info text-center">
+                    <i class="fas fa-info-circle me-2"></i> No se encontraron créditos registrados
+                </div>
+            }
+            else
+            {
+                <!-- Tabla de créditos -->
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover table-bordered">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>ID</th>
+                                <th>Factura</th>
+                                <th>Fecha Inicio</th>
+                                <th>Fecha Fin</th>
+                                <th>Saldo Máx.</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var credito in creditosFiltrados)
+                            {
+                                <tr>
+                                    <td>@credito.IdCredito</td>
+                                    <td>@credito.CodigoFactura</td>
+                                    <td>@credito.FechaInicial.ToShortDateString()</td>
+                                    <td class="@(credito.Estado == "Vencido" ? "text-danger fw-bold" : "")">
+                                        @credito.FechaFinal.ToShortDateString()
+                                    </td>
+                                    <td class="text-end">@credito.SaldoMaximo.ToString("C")</td>
+                                    <td>
+                                        <span class="badge @GetBadgeClass(credito.Estado)">
+                                            @credito.Estado
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary me-1"
+                                                @onclick="() => VerDetalles(credito.IdCredito)"
+                                                title="Ver detalles">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-warning me-1"
+                                                @onclick="() => EditarCredito(credito.IdCredito)"
+                                                title="Editar">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger"
+                                                @onclick="() => EliminarCredito(credito.IdCredito)"
+                                                title="Eliminar">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Paginación -->
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div>
+                        <span class="text-muted">
+                            Mostrando @((paginaActual - 1) * itemsPorPagina + 1) a
+                            @Math.Min(paginaActual * itemsPorPagina, creditosFiltrados.Count) de
+                            @creditosFiltrados.Count créditos
+                        </span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-outline-primary @(paginaActual == 1 ? "disabled" : "")"
+                                @onclick="() => CambiarPagina(paginaActual - 1)">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        @for (int i = 1; i <= totalPaginas; i++)
+                        {
+                            <button class="btn @(i == paginaActual ? "btn-primary" : "btn-outline-primary")"
+                                    @onclick="() => CambiarPagina(i)">
+                                @i
+                            </button>
+                        }
+                        <button class="btn btn-outline-primary @(paginaActual == totalPaginas ? "disabled" : "")"
+                                @onclick="() => CambiarPagina(paginaActual + 1)">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Modal para formulario -->
+@if (mostrarModal)
+{
+    <div class="modal-backdrop fade show" style="z-index: 1050;"></div>
+    <div class="modal fade show d-block" style="z-index: 1060;" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        @(creditoSeleccionado.IdCredito == 0 ? "Nuevo Crédito" : "Editar Crédito")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
+                </div>
+
+                <EditForm Model="@creditoSeleccionado" OnValidSubmit="@GuardarCredito">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
+
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Factura asociada</label>
+                                <InputNumber @bind-Value="creditoSeleccionado.CodigoFactura" class="form-control" />
+                                <ValidationMessage For="@(() => creditoSeleccionado.CodigoFactura)" />
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Saldo Máximo</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <InputNumber @bind-Value="creditoSeleccionado.SaldoMaximo" class="form-control" step="0.01" />
+                                </div>
+                                <ValidationMessage For="@(() => creditoSeleccionado.SaldoMaximo)" />
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Fecha Inicial</label>
+                                <InputDate @bind-Value="creditoSeleccionado.FechaInicial" class="form-control" />
+                                <ValidationMessage For="@(() => creditoSeleccionado.FechaInicial)" />
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Fecha Final</label>
+                                <InputDate @bind-Value="creditoSeleccionado.FechaFinal" class="form-control" />
+                                <ValidationMessage For="@(() => creditoSeleccionado.FechaFinal)" />
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Estado</label>
+                                <InputSelect @bind-Value="creditoSeleccionado.Estado" class="form-select">
+                                    <option value="Activo">Activo</option>
+                                    <option value="Vencido">Vencido</option>
+                                    <option value="Pagado">Pagado</option>
+                                </InputSelect>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CerrarModal">
+                            Cancelar
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i> Guardar
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // Modelo
+    public class CreditoModel
+    {
+        public int IdCredito { get; set; }
+        public int CodigoFactura { get; set; }
+        public DateTime FechaInicial { get; set; } = DateTime.Now;
+        public DateTime FechaFinal { get; set; } = DateTime.Now.AddMonths(1);
+        public decimal SaldoMaximo { get; set; }
+        public string Estado { get; set; } = "Activo";
+    }
+
+    // Variables de estado
+    private List<CreditoModel> listaCreditos = new List<CreditoModel>();
+    private List<CreditoModel> creditosFiltrados = new List<CreditoModel>();
+    private CreditoModel creditoSeleccionado = new CreditoModel();
+    private bool cargando = true;
+    private bool mostrarModal = false;
+    private string filtroBusqueda = "";
+    private string filtroEstado = "";
+    private DateTime? filtroFecha = null;
+    private int paginaActual = 1;
+    private int itemsPorPagina = 10;
+    private int totalPaginas = 1;
+
+    // Inicialización
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarCreditos();
+        cargando = false;
+    }
+
+    // Cargar créditos desde la API
+    private async Task CargarCreditos()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<List<CreditoModel>>("/api/Credito/GetAllCreditos");
+            if (response != null)
+            {
+                listaCreditos = response;
+                FiltrarCreditos();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar créditos: {ex.Message}");
+        }
+    }
+
+    // Filtrar créditos
+    private void FiltrarCreditos()
+    {
+        var query = listaCreditos.AsQueryable();
+
+        if (!string.IsNullOrEmpty(filtroBusqueda))
+        {
+            query = query.Where(c =>
+                c.IdCredito.ToString().Contains(filtroBusqueda) ||
+                c.CodigoFactura.ToString().Contains(filtroBusqueda) ||
+                c.Estado.Contains(filtroBusqueda));
+        }
+
+        if (!string.IsNullOrEmpty(filtroEstado))
+        {
+            query = query.Where(c => c.Estado == filtroEstado);
+        }
+
+        if (filtroFecha.HasValue)
+        {
+            query = query.Where(c => c.FechaInicial.Date <= filtroFecha.Value.Date &&
+                                   c.FechaFinal.Date >= filtroFecha.Value.Date);
+        }
+
+        creditosFiltrados = query.ToList();
+        totalPaginas = (int)Math.Ceiling((double)creditosFiltrados.Count / itemsPorPagina);
+        CambiarPagina(1);
+    }
+
+    // Paginación
+    private void CambiarPagina(int pagina)
+    {
+        paginaActual = pagina;
+        creditosFiltrados = creditosFiltrados
+            .Skip((paginaActual - 1) * itemsPorPagina)
+            .Take(itemsPorPagina)
+            .ToList();
+    }
+
+    // Búsqueda
+    private void BuscarCreditos()
+    {
+        paginaActual = 1;
+        FiltrarCreditos();
+    }
+
+    // Mostrar formulario
+    private void MostrarFormulario()
+    {
+        creditoSeleccionado = new CreditoModel
+            {
+                FechaInicial = DateTime.Now,
+                FechaFinal = DateTime.Now.AddMonths(1),
+                Estado = "Activo"
+            };
+        mostrarModal = true;
+    }
+
+    // Editar crédito
+    private async Task EditarCredito(int id)
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<CreditoModel>($"/api/Credito/{id}");
+            if (response != null)
+            {
+                creditoSeleccionado = response;
+                mostrarModal = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar crédito: {ex.Message}");
+        }
+    }
+
+    // Guardar crédito
+    private async Task GuardarCredito()
+    {
+        try
+        {
+            HttpResponseMessage response;
+
+            if (creditoSeleccionado.IdCredito == 0)
+            {
+                response = await Http.PostAsJsonAsync("/api/Credito", creditoSeleccionado);
+            }
+            else
+            {
+                response = await Http.PutAsJsonAsync($"/api/Credito/{creditoSeleccionado.IdCredito}", creditoSeleccionado);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                await CargarCreditos();
+                CerrarModal();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al guardar crédito: {ex.Message}");
+        }
+    }
+
+    // Eliminar crédito
+    private async Task EliminarCredito(int id)
+    {
+        bool confirmar = await JSRuntime.InvokeAsync<bool>("confirm",
+            new object[] { "¿Está seguro que desea eliminar este crédito?" });
+
+        if (!confirmar) return;
+
+        try
+        {
+            var response = await Http.DeleteAsync($"/api/Credito/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                await CargarCreditos();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al eliminar crédito: {ex.Message}");
+        }
+    }
+
+    // Ver detalles
+    private void VerDetalles(int id)
+    {
+        // Implementar lógica para ver detalles
+        Console.WriteLine($"Ver detalles del crédito {id}");
+    }
+
+    // Cerrar modal
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+    }
+
+    // Clases CSS para badges
+    private string GetBadgeClass(string estado)
+    {
+        return estado switch
+        {
+            "Activo" => "bg-success",
+            "Vencido" => "bg-danger",
+            "Pagado" => "bg-secondary",
+            _ => "bg-warning"
+        };
+    }
+}

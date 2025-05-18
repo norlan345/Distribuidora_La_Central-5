@@ -1,67 +1,126 @@
 ﻿using Distribuidora_La_Central.Web.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using System.Data;
 using System.Data.SqlClient;
 
-namespace Distribuidora_La_Central.Web.Controllers
+[Route("api/[controller]")]
+[ApiController]
+public class DetalleFacturaController : ControllerBase
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class DetalleFacturaController : ControllerBase
+    private readonly IConfiguration _configuration;
+
+    public DetalleFacturaController(IConfiguration configuration)
     {
-        private readonly IConfiguration _configuration;
+        _configuration = configuration;
+    }
 
-        public DetalleFacturaController(IConfiguration configuration)
+    [HttpGet("obtener-todos")]
+    public string ObtenerTodos()
+    {
+        using SqlConnection con = new(_configuration.GetConnectionString("DefaultConnection"));
+        SqlDataAdapter da = new("SELECT * FROM DetalleFactura", con);
+        DataTable dt = new();
+        da.Fill(dt);
+
+        List<DetalleFactura> lista = new();
+        Response response = new();
+
+        foreach (DataRow row in dt.Rows)
         {
-            _configuration = configuration;
+            DetalleFactura detalle = new()
+            {
+                idDetalle = Convert.ToInt32(row["idDetalle"]),
+                codigoFactura = Convert.ToInt32(row["codigoFactura"]),
+                codigoProducto = Convert.ToInt32(row["codigoProducto"]),
+                cantidad = Convert.ToInt32(row["cantidad"]),
+                precioUnitario = Convert.ToDecimal(row["precioUnitario"]),
+                subtotal = Convert.ToDecimal(row["subtotal"])
+            };
+            lista.Add(detalle);
         }
 
-        [HttpGet("obtener-por-factura/{idFactura}")]
-        public string ObtenerDetallesPorFactura(int idFactura)
+        if (lista.Count > 0)
+            return JsonConvert.SerializeObject(lista);
+        else
         {
-            using SqlConnection con = new(_configuration.GetConnectionString("DefaultConnection"));
-            SqlDataAdapter da = new(
-                @"SELECT df.*, p.descripcion as nombreProducto 
-                  FROM DetalleFactura df
-                  INNER JOIN Producto p ON df.idProducto = p.idProducto
-                  WHERE df.idFactura = @idFactura", con);
-
-            da.SelectCommand.Parameters.AddWithValue("@idFactura", idFactura);
-
-            DataTable dt = new();
-            da.Fill(dt);
-
-            List<DetalleFactura> detalles = new();
-            Response response = new();
-
-            if (dt.Rows.Count > 0)
-            {
-                for (int i = 0; i < dt.Rows.Count; i++)
-                {
-                    DetalleFactura detalle = new()
-                    {
-                        idDetalle = Convert.ToInt32(dt.Rows[i]["idDetalle"]),
-                        codigoFactura = Convert.ToInt32(dt.Rows[i]["idFactura"]),
-                        codigoProducto = Convert.ToInt32(dt.Rows[i]["idProducto"]),
-                     
-                        cantidad = Convert.ToInt32(dt.Rows[i]["cantidad"]),
-                        precioUnitario = Convert.ToDecimal(dt.Rows[i]["precioUnitario"]),
-                        subtotal = Convert.ToDecimal(dt.Rows[i]["subtotal"])
-                    };
-                    detalles.Add(detalle);
-                }
-            }
-
-            if (detalles.Count > 0)
-                return JsonConvert.SerializeObject(detalles);
-            else
-            {
-                response.StatusCode = 100;
-                response.ErrorMessage = "No se encontraron detalles para esta factura.";
-                return JsonConvert.SerializeObject(response);
-            }
+            response.StatusCode = 100;
+            response.ErrorMessage = "No se encontraron datos.";
+            return JsonConvert.SerializeObject(response);
         }
+    }
+
+    [HttpPost("registrar")]
+    public IActionResult Registrar([FromBody] DetalleFactura detalle)
+    {
+        using SqlConnection con = new(_configuration.GetConnectionString("DefaultConnection"));
+
+        SqlCommand cmd = new("INSERT INTO DetalleFactura (codigoFactura, codigoProducto, cantidad, precioUnitario, subtotal) " +
+                             "VALUES (@codigoFactura, @codigoProducto, @cantidad, @precioUnitario, @subtotal)", con);
+
+        cmd.Parameters.AddWithValue("@codigoFactura", detalle.codigoFactura);
+        cmd.Parameters.AddWithValue("@codigoProducto", detalle.codigoProducto);
+        cmd.Parameters.AddWithValue("@cantidad", detalle.cantidad);
+        cmd.Parameters.AddWithValue("@precioUnitario", detalle.precioUnitario);
+        cmd.Parameters.AddWithValue("@subtotal", detalle.subtotal);
+
+        con.Open();
+        int result = cmd.ExecuteNonQuery();
+        con.Close();
+
+        if (result > 0)
+            return Ok("Detalle registrado correctamente");
+        else
+            return StatusCode(500, "Error al registrar el detalle");
+    }
+
+    [HttpPut("actualizar/{id}")]
+    public IActionResult Actualizar(int id, [FromBody] DetalleFactura detalle)
+    {
+        using SqlConnection con = new(_configuration.GetConnectionString("DefaultConnection"));
+
+        SqlCommand cmd = new(@"UPDATE DetalleFactura SET 
+                                codigoFactura = @codigoFactura,
+                                codigoProducto = @codigoProducto,
+                                cantidad = @cantidad,
+                                precioUnitario = @precioUnitario,
+                                subtotal = @subtotal
+                                WHERE idDetalle = @idDetalle", con);
+
+        cmd.Parameters.AddWithValue("@idDetalle", id);
+        cmd.Parameters.AddWithValue("@codigoFactura", detalle.codigoFactura);
+        cmd.Parameters.AddWithValue("@codigoProducto", detalle.codigoProducto);
+        cmd.Parameters.AddWithValue("@cantidad", detalle.cantidad);
+        cmd.Parameters.AddWithValue("@precioUnitario", detalle.precioUnitario);
+        cmd.Parameters.AddWithValue("@subtotal", detalle.subtotal);
+
+        con.Open();
+        int result = cmd.ExecuteNonQuery();
+        con.Close();
+
+        if (result > 0)
+            return Ok("Detalle actualizado correctamente");
+        else
+            return NotFound("Detalle no encontrado");
+    }
+
+    [HttpDelete("eliminar/{id}")]
+    public IActionResult Eliminar(int id)
+    {
+        using SqlConnection con = new(_configuration.GetConnectionString("DefaultConnection"));
+
+        SqlCommand cmd = new("DELETE FROM DetalleFactura WHERE idDetalle = @id", con);
+        cmd.Parameters.AddWithValue("@id", id);
+
+        con.Open();
+        int result = cmd.ExecuteNonQuery();
+        con.Close();
+
+        if (result > 0)
+            return Ok("Detalle eliminado correctamente");
+        else
+            return NotFound("Detalle no encontrado");
     }
 }

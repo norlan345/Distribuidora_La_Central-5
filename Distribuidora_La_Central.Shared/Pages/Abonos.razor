@@ -1,0 +1,392 @@
+﻿@page "/Abonos"
+@using System.Net.Http
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+
+
+
+<h3 class="text-white bg-primary p-3 rounded-top">Gestión de Abonos</h3>
+
+<div class="border border-primary rounded-bottom p-4 shadow">
+    <div class="d-flex justify-content-between mb-4">
+        <button class="btn btn-primary" @onclick="MostrarFormulario">
+            <i class="fas fa-plus-circle"></i> Registrar Nuevo Abono
+        </button>
+
+        <div class="input-group" style="width: 300px;">
+            <input type="text" class="form-control" placeholder="Buscar abonos..." @bind="filtroBusqueda" />
+            <button class="btn btn-outline-primary" @onclick="BuscarAbonos">
+                <i class="fas fa-search"></i>
+            </button>
+        </div>
+    </div>
+
+    @if (mostrarForm)
+    {
+        <div class="modal-overlay">
+            <div class="modal-content bg-white p-4 rounded shadow-lg" style="max-width: 600px;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 class="text-primary">Registrar Abono</h4>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="CerrarFormulario">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <EditForm Model="@nuevoAbono" OnValidSubmit="@RegistrarAbono">
+                    <DataAnnotationsValidator />
+
+                    <div class="form-group mb-3">
+                        <label class="text-primary fw-bold">Factura:</label>
+                        <InputSelect @bind-Value="nuevoAbono.codigoFactura" class="form-select">
+                            <option value="">Seleccione una factura</option>
+                            @foreach (var factura in facturasPendientes)
+                            {
+                                <option value="@factura.codigoFactura">
+                                    Factura #@factura.codigoFactura - Saldo: @factura.saldo.ToString("C")
+                                </option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="@(() => nuevoAbono.codigoFactura)" />
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label class="text-primary fw-bold">Monto del Abono:</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <InputNumber @bind-Value="nuevoAbono.montoAbono" class="form-control"
+                                         step="0.01" min="0.01"
+                                         max="@(GetSaldoFactura() ?? 0)" />
+                        </div>
+                        <small class="text-muted">Saldo disponible: @(GetSaldoFactura()?.ToString("C") ?? "Seleccione una factura")</small>
+                        <ValidationMessage For="@(() => nuevoAbono.montoAbono)" />
+                    </div>
+
+                    <div class="form-group mb-4">
+                        <label class="text-primary fw-bold">Fecha del Abono:</label>
+                        <InputDate @bind-Value="nuevoAbono.fechaAbono" class="form-control" />
+                        <ValidationMessage For="@(() => nuevoAbono.fechaAbono)" />
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CerrarFormulario">
+                            Cancelar
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Guardar Abono
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    }
+
+    @if (abonos.Count == 0 && !cargando)
+    {
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i> No se encontraron abonos registrados.
+        </div>
+    }
+    else if (cargando)
+    {
+        <div class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p>Cargando abonos...</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-primary">
+                    <tr>
+                        <th>ID</th>
+                        <th>Factura</th>
+                        <th>Monto</th>
+                        <th>Fecha</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var abono in abonosFiltrados)
+                    {
+                        <tr>
+                            <td>@abono.idAbono</td>
+                            <td>@abono.codigoFactura</td>
+                            <td class="fw-bold">@abono.montoAbono.ToString("C")</td>
+                            <td>@abono.fechaAbono.ToShortDateString()</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary me-2" @onclick="() => VerDetalle(abono.idAbono)">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="async () => await EliminarAbono(abono.idAbono)">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <span class="text-muted">Mostrando @abonosFiltrados.Count de @abonos.Count abonos</span>
+
+            <div class="btn-group">
+                <button class="btn btn-outline-primary @(paginaActual == 1 ? "disabled" : "")"
+                        @onclick="() => CambiarPagina(paginaActual - 1)">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+
+                @for (int i = 1; i <= totalPaginas; i++)
+                {
+                    <button class="btn @(i == paginaActual ? "btn-primary" : "btn-outline-primary")"
+                            @onclick="() => CambiarPagina(i)">
+                        @i
+                    </button>
+                }
+
+                <button class="btn btn-outline-primary @(paginaActual == totalPaginas ? "disabled" : "")"
+                        @onclick="() => CambiarPagina(paginaActual + 1)">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Abono> abonos = new List<Abono>();
+    private List<Abono> abonosFiltrados = new List<Abono>();
+    private List<Factura> facturasPendientes = new List<Factura>();
+    private Abono nuevoAbono = new Abono { fechaAbono = DateTime.Now };
+    private bool mostrarForm = false;
+    private bool cargando = true;
+    private string filtroBusqueda = "";
+    private int paginaActual = 1;
+    private int itemsPorPagina = 10;
+    private int totalPaginas = 1;
+
+
+
+
+    public class Factura
+    {
+        public int codigoFactura { get; set; }
+        public int codigoCliente { get; set; }
+        public DateTime fecha { get; set; }
+        public decimal totalFactura { get; set; }
+        public decimal saldo { get; set; }
+        public string tipo { get; set; }
+        public string estado { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarAbonos();
+        await CargarFacturasPendientes();
+        cargando = false;
+    }
+
+    private async Task CargarAbonos()
+    {
+        try
+        {
+            abonos = await Http.GetFromJsonAsync<List<Abono>>("/api/Abono/GetAllAbonos");
+            FiltrarAbonos();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar abonos: {ex.Message}");
+        }
+    }
+
+
+    private async Task CargarFacturasPendientes()
+    {
+        try
+        {
+            var response = await Http.GetAsync("/api/Factura/GetFacturasPendientes");
+            if (response.IsSuccessStatusCode)
+            {
+                facturasPendientes = await response.Content.ReadFromJsonAsync<List<Factura>>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar facturas pendientes: {ex.Message}");
+        }
+    }
+
+    private void FiltrarAbonos()
+    {
+        var query = abonos.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(filtroBusqueda))
+        {
+            query = query.Where(a =>
+                a.idAbono.ToString().Contains(filtroBusqueda) ||
+                a.codigoFactura.ToString().Contains(filtroBusqueda) ||
+                a.montoAbono.ToString().Contains(filtroBusqueda) ||
+                a.fechaAbono.ToString().Contains(filtroBusqueda));
+        }
+
+        totalPaginas = (int)Math.Ceiling((double)query.Count() / itemsPorPagina);
+        abonosFiltrados = query
+            .Skip((paginaActual - 1) * itemsPorPagina)
+            .Take(itemsPorPagina)
+            .ToList();
+    }
+
+    private void CambiarPagina(int pagina)
+    {
+        paginaActual = pagina;
+        FiltrarAbonos();
+    }
+
+    private void BuscarAbonos()
+    {
+        paginaActual = 1;
+        FiltrarAbonos();
+    }
+
+    private void MostrarFormulario()
+    {
+        nuevoAbono = new Abono { fechaAbono = DateTime.Now };
+        mostrarForm = true;
+    }
+
+    private void CerrarFormulario()
+    {
+        mostrarForm = false;
+    }
+
+    private decimal? GetSaldoFactura()
+    {
+        if (nuevoAbono.codigoFactura == 0) return null;
+        return facturasPendientes.FirstOrDefault(f => f.codigoFactura == nuevoAbono.codigoFactura)?.saldo;
+    }
+
+    private async Task RegistrarAbono()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/Abono/registrar-abono", nuevoAbono);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<dynamic>();
+                // Mostrar mensaje de éxito
+                Console.WriteLine("Abono registrado exitosamente");
+
+                // Recargar datos
+                await CargarAbonos();
+                await CargarFacturasPendientes();
+                mostrarForm = false;
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Error: {error}");
+                // Mostrar error al usuario
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error general: {ex.Message}");
+        }
+    }
+
+    private async Task VerDetalle(int idAbono)
+    {
+        // Implementar lógica para ver detalles del abono
+        // Podrías hacer una llamada adicional al API si necesitas más información
+    }
+
+    private async Task EliminarAbono(int idAbono)
+    {
+        bool confirmar = await JSRuntime.InvokeAsync<bool>("confirm");
+        if (!confirmar) return;
+
+        try
+        {
+            var response = await Http.DeleteAsync($"/api/Abono/eliminar-abono/{idAbono}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                // Mostrar mensaje de éxito
+                Console.WriteLine("Abono eliminado exitosamente");
+                await CargarAbonos();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Error: {error}");
+                // Mostrar error al usuario
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error general: {ex.Message}");
+        }
+    }
+
+    public class Abono
+    {
+        public int idAbono { get; set; }
+        public int codigoFactura { get; set; }
+        public decimal montoAbono { get; set; }
+        public DateTime fechaAbono { get; set; }
+    }
+
+
+}
+
+<style>
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background-color: white;
+        animation: modalFadeIn 0.3s;
+    }
+
+    @@keyframes modalFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .table-primary {
+        background-color: #0d6efd;
+        color: white;
+    }
+
+    .btn-outline-primary {
+        border-color: #0d6efd;
+        color: #0d6efd;
+    }
+
+        .btn-outline-primary:hover {
+            background-color: #0d6efd;
+            color: white;
+        }
+</style>

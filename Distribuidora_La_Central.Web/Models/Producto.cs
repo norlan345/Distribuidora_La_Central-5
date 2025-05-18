@@ -11,5 +11,10 @@
         public int items { get; set; }
         public int idBodega { get; set; }
         public int idProveedor { get; set; }
+
+        // Nuevas propiedades
+        public string unidadMedida { get; set; }    // NUEVO
+        public decimal margenGanancia { get; set; }  // NUEVO
+      
     }
 }

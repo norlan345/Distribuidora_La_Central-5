@@ -25,7 +25,7 @@ namespace Distribuidora_La_Central.Web.Controllers
             try
             {
                 using SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                SqlDataAdapter da = new SqlDataAdapter("SELECT codigoProducto, descripcion, cantidad, costo, items, idProveedor, idCategoria, descuento, idBodega FROM Producto", con);
+                SqlDataAdapter da = new SqlDataAdapter("SELECT codigoProducto, descripcion, cantidad, costo, items, idProveedor, idCategoria, descuento, idBodega, unidadMedida, margenGanancia FROM Producto", con);
                 DataTable dt = new DataTable();
                 da.Fill(dt);
 
@@ -45,7 +45,10 @@ namespace Distribuidora_La_Central.Web.Controllers
                             idProveedor = row["idProveedor"] != DBNull.Value ? Convert.ToInt32(row["idProveedor"]) : 0,
                             idCategoria = row["idCategoria"] != DBNull.Value ? Convert.ToInt32(row["idCategoria"]) : 0,
                             descuento = row["descuento"] != DBNull.Value ? Convert.ToDecimal(row["descuento"]) : 0m,
-                            idBodega = row["idBodega"] != DBNull.Value ? Convert.ToInt32(row["idBodega"]) : 0
+                            idBodega = row["idBodega"] != DBNull.Value ? Convert.ToInt32(row["idBodega"]) : 0,
+                            unidadMedida = row["unidadMedida"] != DBNull.Value ? Convert.ToString(row["unidadMedida"]) : string.Empty,
+                            margenGanancia = row["margenGanancia"] != DBNull.Value ? Convert.ToDecimal(row["margenGanancia"]) : 0m
+
                         };
                         productoList.Add(producto);
                     }
@@ -110,7 +113,9 @@ namespace Distribuidora_La_Central.Web.Controllers
                         idProveedor = reader["idProveedor"] != DBNull.Value ? Convert.ToInt32(reader["idProveedor"]) : 0,
                         idCategoria = reader["idCategoria"] != DBNull.Value ? Convert.ToInt32(reader["idCategoria"]) : 0,
                         descuento = reader["descuento"] != DBNull.Value ? Convert.ToDecimal(reader["descuento"]) : 0m,
-                        idBodega = reader["idBodega"] != DBNull.Value ? Convert.ToInt32(reader["idBodega"]) : 0
+                        idBodega = reader["idBodega"] != DBNull.Value ? Convert.ToInt32(reader["idBodega"]) : 0,
+                         unidadMedida = reader["descripcion"] != DBNull.Value ? Convert.ToString(reader["descripcion"]) : string.Empty,
+                        margenGanancia = reader["margenGanancia"] != DBNull.Value ? Convert.ToDecimal(reader["margenGanancia"]) : 0m
                     };
                     productos.Add(producto);
                 }
@@ -152,9 +157,9 @@ namespace Distribuidora_La_Central.Web.Controllers
                 // Insertar nuevo producto
                 SqlCommand insertCmd = new SqlCommand(
                     @"INSERT INTO Producto 
-                    (descripcion, cantidad, idCategoria, descuento, costo, idBodega, idProveedor, items) 
+                    (descripcion, cantidad, idCategoria, descuento, costo, idBodega, idProveedor, items, unidadMedida,margenGanancia) 
                     VALUES 
-                    (@descripcion, @cantidad, @idCategoria, @descuento, @costo, @idBodega, @idProveedor, @items);
+                    (@descripcion, @cantidad, @idCategoria, @descuento, @costo, @idBodega, @idProveedor, @items, @unidadMedida, @margenGanancia);
                     SELECT SCOPE_IDENTITY();",
                     con);
 
@@ -166,6 +171,8 @@ namespace Distribuidora_La_Central.Web.Controllers
                 insertCmd.Parameters.AddWithValue("@idBodega", producto.idBodega);
                 insertCmd.Parameters.AddWithValue("@idProveedor", producto.idProveedor);
                 insertCmd.Parameters.AddWithValue("@items", producto.items);
+                insertCmd.Parameters.AddWithValue("@unidadMedida", producto.unidadMedida ?? string.Empty);
+                insertCmd.Parameters.AddWithValue("@margenGanancia", producto.margenGanancia);
 
                 int newId = Convert.ToInt32(insertCmd.ExecuteScalar());
 
@@ -205,7 +212,9 @@ namespace Distribuidora_La_Central.Web.Controllers
                         costo = @costo,
                         idBodega = @idBodega,
                         idProveedor = @idProveedor,
-                        items = @items
+                        items = @items,
+unidadMedida = @unidadMedida,
+                        margenGanancia = @margenGanancia
                     WHERE codigoProducto = @codigoProducto",
                     con);
 
@@ -218,6 +227,8 @@ namespace Distribuidora_La_Central.Web.Controllers
                 cmd.Parameters.AddWithValue("@idBodega", producto.idBodega);
                 cmd.Parameters.AddWithValue("@idProveedor", producto.idProveedor);
                 cmd.Parameters.AddWithValue("@items", producto.items);
+                cmd.Parameters.AddWithValue("@unidadMedida", producto.unidadMedida ?? string.Empty);
+                cmd.Parameters.AddWithValue("@margenGanancia", producto.margenGanancia);
 
                 con.Open();
                 int rowsAffected = cmd.ExecuteNonQuery();
