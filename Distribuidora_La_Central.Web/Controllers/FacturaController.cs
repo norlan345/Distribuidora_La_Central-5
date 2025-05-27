@@ -37,7 +37,8 @@ namespace Distribuidora_La_Central.Web.Controllers
                     fecha = Convert.ToDateTime(row["fecha"]),
                     totalFactura = Convert.ToDecimal(row["totalFactura"]),
                     saldo = Convert.ToDecimal(row["saldo"]),
-                    tipo = row["tipo"].ToString()
+                    tipo = row["tipo"].ToString(),
+                  
                 });
             }
 
@@ -66,29 +67,41 @@ namespace Distribuidora_La_Central.Web.Controllers
                 fecha = Convert.ToDateTime(row["fecha"]),
                 totalFactura = Convert.ToDecimal(row["totalFactura"]),
                 saldo = Convert.ToDecimal(row["saldo"]),
-                tipo = row["tipo"].ToString()
+                tipo = row["tipo"].ToString(),
+              
             };
 
             return Ok(factura);
         }
-
-
-
 
         [HttpPost("AgregarFactura")]
         public IActionResult AgregarFactura([FromBody] FacturaConDetalles facturaConDetalles)
         {
             try
             {
+                // Validar el modelo recibido
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
                 using SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
                 con.Open();
                 using SqlTransaction transaction = con.BeginTransaction();
 
                 try
                 {
-                    string queryFactura = @"INSERT INTO Factura (codigoCliente, fecha, totalFactura, saldo, tipo)
-                                           OUTPUT INSERTED.codigoFactura
-                                           VALUES (@codigoCliente, @fecha, @totalFactura, @saldo, @tipo)";
+                    // Validar tipo de factura
+                    if (facturaConDetalles.Factura.tipo != "Contado" && facturaConDetalles.Factura.tipo != "Crédito")
+                    {
+                        return BadRequest(new { error = "Tipo de factura no válido. Debe ser 'Contado' o 'Crédito'" });
+                    }
+
+                    // 1. Insertar la factura
+                    string queryFactura = @"INSERT INTO Factura 
+                                (codigoCliente, fecha, totalFactura, saldo, tipo, estado)
+                                OUTPUT INSERTED.codigoFactura
+                                VALUES (@codigoCliente, @fecha, @totalFactura, @saldo, @tipo, @estado)";
 
                     int codigoFactura;
                     using (SqlCommand cmd = new SqlCommand(queryFactura, con, transaction))
@@ -96,14 +109,24 @@ namespace Distribuidora_La_Central.Web.Controllers
                         cmd.Parameters.AddWithValue("@codigoCliente", facturaConDetalles.Factura.codigoCliente);
                         cmd.Parameters.AddWithValue("@fecha", facturaConDetalles.Factura.fecha);
                         cmd.Parameters.AddWithValue("@totalFactura", facturaConDetalles.Factura.totalFactura);
-                        cmd.Parameters.AddWithValue("@saldo", facturaConDetalles.Factura.saldo);
+
+                        // Establecer saldo inicial
+                        decimal saldoInicial = facturaConDetalles.Factura.tipo == "Contado" ? 0 : facturaConDetalles.Factura.totalFactura;
+                        cmd.Parameters.AddWithValue("@saldo", saldoInicial);
+
                         cmd.Parameters.AddWithValue("@tipo", facturaConDetalles.Factura.tipo);
+
+                        // Estado de la factura
+                        string estadoFactura = facturaConDetalles.Factura.tipo == "Contado" ? "Pagado" : "Pendiente";
+                        cmd.Parameters.AddWithValue("@estado", estadoFactura);
 
                         codigoFactura = (int)cmd.ExecuteScalar();
                     }
 
-                    string queryDetalle = @"INSERT INTO DetalleFactura (codigoFactura, codigoProducto, cantidad, precioUnitario, subtotal)
-                                            VALUES (@codigoFactura, @codigoProducto, @cantidad, @precioUnitario, @subtotal)";
+                    // 2. Insertar los detalles de la factura
+                    string queryDetalle = @"INSERT INTO DetalleFactura 
+                                (codigoFactura, codigoProducto, cantidad, precioUnitario, subtotal)
+                                VALUES (@codigoFactura, @codigoProducto, @cantidad, @precioUnitario, @subtotal)";
 
                     foreach (var detalle in facturaConDetalles.Detalles)
                     {
@@ -117,18 +140,52 @@ namespace Distribuidora_La_Central.Web.Controllers
                         cmd.ExecuteNonQuery();
                     }
 
+                    // 3. Si es crédito, insertar en la tabla de créditos
+                    if (facturaConDetalles.Factura.tipo == "Crédito")
+                    {
+                        // Calcular fecha de vencimiento (30 días después como ejemplo)
+                        DateTime fechaVencimiento = facturaConDetalles.Factura.fecha.AddDays(30);
+
+                        string queryCredito = @"INSERT INTO Credito 
+                                    (codigoFactura, fechaInicial, fechaFinal, saldoMaximo, estado)
+                                    VALUES 
+                                    (@codigoFactura, @fechaInicial, @fechaFinal, @saldoMaximo, @estado)";
+
+                        using SqlCommand cmd = new SqlCommand(queryCredito, con, transaction);
+                        cmd.Parameters.AddWithValue("@codigoFactura", codigoFactura);
+                        cmd.Parameters.AddWithValue("@fechaInicial", facturaConDetalles.Factura.fecha);
+                        cmd.Parameters.AddWithValue("@fechaFinal", fechaVencimiento);
+                        cmd.Parameters.AddWithValue("@saldoMaximo", facturaConDetalles.Factura.totalFactura);
+                        cmd.Parameters.AddWithValue("@estado", "Activo"); // Estado inicial para créditos nuevos
+
+                        cmd.ExecuteNonQuery();
+                    }
+
                     transaction.Commit();
-                    return Ok(new { codigoFactura, message = "Factura registrada exitosamente" });
+                    return Ok(new
+                    {
+                        codigoFactura,
+                        message = $"Factura registrada exitosamente como {facturaConDetalles.Factura.tipo}"
+                    });
                 }
                 catch (Exception ex)
                 {
                     transaction.Rollback();
-                    return StatusCode(500, new { error = ex.Message });
+                    return StatusCode(500, new
+                    {
+                        error = "Error al registrar la factura",
+                        details = ex.Message,
+                        innerException = ex.InnerException?.Message
+                    });
                 }
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = ex.Message });
+                return StatusCode(500, new
+                {
+                    error = "Error de conexión con la base de datos",
+                    details = ex.Message
+                });
             }
         }
 
@@ -147,13 +204,16 @@ namespace Distribuidora_La_Central.Web.Controllers
         [HttpPut("ActualizarFactura/{id}")]
         public IActionResult ActualizarFactura(int id, [FromBody] Factura factura)
         {
+            // Set default estado if not provided
+          
             using SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
             string query = @"UPDATE Factura SET 
                                 codigoCliente = @codigoCliente,
                                 fecha = @fecha,
                                 totalFactura = @totalFactura,
                                 saldo = @saldo,
-                                tipo = @tipo
+                                tipo = @tipo,
+                                estado = @estado
                              WHERE codigoFactura = @codigoFactura";
 
             using SqlCommand cmd = new SqlCommand(query, con);
@@ -163,6 +223,7 @@ namespace Distribuidora_La_Central.Web.Controllers
             cmd.Parameters.AddWithValue("@totalFactura", factura.totalFactura);
             cmd.Parameters.AddWithValue("@saldo", factura.saldo);
             cmd.Parameters.AddWithValue("@tipo", factura.tipo);
+          
 
             con.Open();
             int rows = cmd.ExecuteNonQuery();
@@ -170,12 +231,6 @@ namespace Distribuidora_La_Central.Web.Controllers
                 return Ok(new { message = "Factura actualizada correctamente" });
             else
                 return NotFound(new { message = "Factura no encontrada" });
-        }
-
-        public class FacturaConDetalles
-        {
-            public Factura Factura { get; set; }
-            public List<DetalleFactura> Detalles { get; set; }
         }
 
         [HttpGet("GetFacturasPendientes")]
@@ -200,12 +255,18 @@ namespace Distribuidora_La_Central.Web.Controllers
                         codigoFactura = Convert.ToInt32(row["codigoFactura"]),
                         totalFactura = Convert.ToDecimal(row["totalFactura"]),
                         saldo = Convert.ToDecimal(row["saldo"]),
-                        estado = row["estado"]?.ToString()
+                       
                     });
                 }
 
                 return Ok(facturas);
             }
+        }
+
+        public class FacturaConDetalles
+        {
+            public Factura Factura { get; set; }
+            public List<DetalleFactura> Detalles { get; set; }
         }
     }
 }

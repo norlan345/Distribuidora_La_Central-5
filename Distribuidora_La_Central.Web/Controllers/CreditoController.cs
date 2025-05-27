@@ -20,6 +20,235 @@ namespace Distribuidora_La_Central.Web.Controllers
             _configuration = configuration;
         }
 
+        [HttpGet("GetCreditosPorCliente")]
+        public IActionResult GetCreditosPorCliente()
+        {
+            try
+            {
+                using (SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection")))
+                {
+                    string query = @"
+                SELECT 
+                    c.idCredito, 
+                    c.codigoFactura,
+                    cli.codigoCliente, 
+                    cli.nombre as nombreCliente, 
+                    c.saldoMaximo as saldoActual, 
+                    c.fechaFinal as fechaVencimiento,
+                    c.estado
+                FROM Credito c
+                JOIN Factura f ON c.codigoFactura = f.codigoFactura
+                JOIN Cliente cli ON f.codigoCliente = cli.codigoCliente
+                WHERE c.estado = 'Activo'";
+
+                    SqlDataAdapter da = new SqlDataAdapter(query, con);
+                    DataTable dt = new DataTable();
+                    da.Fill(dt);
+
+                    var creditos = new List<CreditoClienteView>();
+
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        creditos.Add(new CreditoClienteView
+                        {
+                            idCredito = Convert.ToInt32(row["idCredito"]),
+                            codigoFactura = Convert.ToInt32(row["codigoFactura"]),
+                            codigoCliente = Convert.ToInt32(row["codigoCliente"]),
+                            nombreCliente = row["nombreCliente"].ToString(),
+                            saldoActual = Convert.ToDecimal(row["saldoActual"]),
+                            fechaVencimiento = Convert.ToDateTime(row["fechaVencimiento"]),
+                            estado = row["estado"].ToString()
+                        });
+                    }
+
+                    return Ok(creditos);
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error interno del servidor: {ex.Message}");
+            }
+        }
+        public class CreditoClienteView
+        {
+            public int idCredito { get; set; }
+            public int codigoFactura { get; set; }  // <- Añadir esta propiedad
+            public int codigoCliente { get; set; }
+            public string nombreCliente { get; set; }
+            public decimal saldoActual { get; set; }
+            public DateTime fechaVencimiento { get; set; }
+            public string estado { get; set; }
+        }
+
+        [HttpPost("CrearCreditoConFactura")]
+        public IActionResult CrearCreditoConFactura([FromBody] NuevoCreditoConFacturaDto request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            using (SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection")))
+            {
+                con.Open();
+                using (SqlTransaction transaction = con.BeginTransaction())
+                {
+                    try
+                    {
+                        // 1. Verificar que el cliente existe
+                        string verificarClienteQuery = "SELECT COUNT(1) FROM Cliente WHERE codigoCliente = @codigoCliente";
+                        using (SqlCommand verificarCmd = new SqlCommand(verificarClienteQuery, con, transaction))
+                        {
+                            verificarCmd.Parameters.AddWithValue("@codigoCliente", request.codigoCliente);
+                            int existe = (int)verificarCmd.ExecuteScalar();
+
+                            if (existe == 0)
+                            {
+                                transaction.Rollback();
+                                return NotFound($"Cliente con código {request.codigoCliente} no encontrado");
+                            }
+                        }
+
+                        // 2. Insertar la nueva factura
+                        string insertarFacturaQuery = @"
+                    INSERT INTO Factura (
+                        codigoCliente, 
+                        fecha, 
+                        totalFactura, 
+                        saldo, 
+                        tipo
+                    ) 
+                    VALUES (
+                        @codigoCliente, 
+                        @fecha, 
+                        @totalFactura, 
+                        @saldo, 
+                        @tipo
+                    );
+                    SELECT SCOPE_IDENTITY();";
+
+                        int codigoFactura;
+                        using (SqlCommand facturaCmd = new SqlCommand(insertarFacturaQuery, con, transaction))
+                        {
+                            facturaCmd.Parameters.AddWithValue("@codigoCliente", request.codigoCliente);
+                            facturaCmd.Parameters.AddWithValue("@fecha", DateTime.Now);
+                            facturaCmd.Parameters.AddWithValue("@totalFactura", request.totalFactura);
+                            facturaCmd.Parameters.AddWithValue("@saldo", request.totalFactura); // El saldo inicial es igual al total
+                            facturaCmd.Parameters.AddWithValue("@tipo", request.tipoFactura ?? "CREDITO");
+
+                            codigoFactura = Convert.ToInt32(facturaCmd.ExecuteScalar());
+                        }
+
+                        // 3. Insertar el nuevo crédito asociado a la factura
+                        string insertarCreditoQuery = @"
+                    INSERT INTO Credito (
+                        codigoFactura, 
+                        saldoMaximo, 
+                        fechaInicio, 
+                        fechaFinal, 
+                        estado
+                    ) 
+                    VALUES (
+                        @codigoFactura, 
+                        @saldoMaximo, 
+                        @fechaInicio, 
+                        @fechaFinal, 
+                        'Activo'
+                    );
+                    SELECT SCOPE_IDENTITY();";
+
+                        int idCredito;
+                        using (SqlCommand creditoCmd = new SqlCommand(insertarCreditoQuery, con, transaction))
+                        {
+                            creditoCmd.Parameters.AddWithValue("@codigoFactura", codigoFactura);
+                            creditoCmd.Parameters.AddWithValue("@saldoMaximo", request.saldoMaximo);
+                            creditoCmd.Parameters.AddWithValue("@fechaInicio", DateTime.Now);
+                            creditoCmd.Parameters.AddWithValue("@fechaFinal", request.fechaVencimiento);
+
+                            idCredito = Convert.ToInt32(creditoCmd.ExecuteScalar());
+                        }
+
+                        transaction.Commit();
+
+                        // Retornar la respuesta con los datos creados
+                        return Ok(new
+                        {
+                            idCredito = idCredito,
+                            codigoFactura = codigoFactura,
+                            codigoCliente = request.codigoCliente,
+                            saldoMaximo = request.saldoMaximo,
+                            fechaVencimiento = request.fechaVencimiento,
+                            totalFactura = request.totalFactura,
+                            tipoFactura = request.tipoFactura ?? "CREDITO",
+                            estado = "Activo"
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        transaction.Rollback();
+                        return StatusCode(500, $"Error al crear el crédito y factura: {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        // DTO para la solicitud
+        public class NuevoCreditoConFacturaDto
+        {
+            public int codigoCliente { get; set; }
+            public decimal totalFactura { get; set; }
+            public decimal saldoMaximo { get; set; }
+            public DateTime fechaVencimiento { get; set; }
+            public string? tipoFactura { get; set; } // Opcional, por defecto será "CREDITO"
+        }
+
+        [HttpGet("GetFacturasConCreditoActivo")]
+        public IActionResult GetFacturasConCreditoActivo()
+        {
+            SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            string query = @"
+        SELECT f.codigoFactura, f.codigoCliente, f.fecha, f.totalFactura, 
+               c.saldoMaximo as saldo, c.estado
+        FROM Factura f
+        JOIN Credito c ON f.codigoFactura = c.codigoFactura
+        WHERE c.estado = 'Activo'";
+
+            SqlDataAdapter da = new SqlDataAdapter(query, con);
+            DataTable dt = new DataTable();
+            da.Fill(dt);
+
+            List<FacturaConCredito> facturas = new List<FacturaConCredito>();
+
+            if (dt.Rows.Count > 0)
+            {
+                foreach (DataRow row in dt.Rows)
+                {
+                    FacturaConCredito factura = new FacturaConCredito
+                    {
+                        codigoFactura = Convert.ToInt32(row["codigoFactura"]),
+                        codigoCliente = Convert.ToInt32(row["codigoCliente"]),
+                        fecha = Convert.ToDateTime(row["fecha"]),
+                        totalFactura = Convert.ToDecimal(row["totalFactura"]),
+                        saldo = Convert.ToDecimal(row["saldo"]), // Usamos saldoMaximo como saldo
+                        estadoCredito = row["estado"].ToString()
+                    };
+                    facturas.Add(factura);
+                }
+            }
+
+            return Ok(facturas);
+        }
+
+        // Modelo adicional para la respuesta
+        public class FacturaConCredito
+        {
+            public int codigoFactura { get; set; }
+            public int codigoCliente { get; set; }
+            public DateTime fecha { get; set; }
+            public decimal totalFactura { get; set; }
+            public decimal saldo { get; set; }
+            public string estadoCredito { get; set; }
+        }
         // GET: api/Credito/GetAllCreditos
         [HttpGet("GetAllCreditos")]
         public async Task<IActionResult> GetAllCreditos()

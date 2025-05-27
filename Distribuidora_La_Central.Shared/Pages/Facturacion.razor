@@ -1,432 +1,296 @@
-﻿@page "/factura"
+﻿@page "/facturacion"
 @inject HttpClient Http
-@inject IJSRuntime JS
 @using Distribuidora_La_Central.Shared.Models
 
-<div class="factura-container">
-    <div class="header-section">
-        <h3 class="page-title">Gestión de Facturas</h3>
-        <div class="tab-buttons">
-            <button class="btn @GetTabClass("facturacion")" @onclick="@(() => CambiarTab("facturacion"))">
-                <i class="fas fa-file-invoice"></i> Facturación
-            </button>
-            <button class="btn @GetTabClass("historial")" @onclick="@(() => CambiarTab("historial"))">
-                <i class="fas fa-history"></i> Historial
-            </button>
-        </div>
-    </div>
+@using System.Net.Http
+@using System.Net.Http.Json
 
-    @if (activeTab == "facturacion")
-    {
-        <div class="card factura-card">
-            <div class="card-body">
-                <EditForm Model="@factura" OnValidSubmit="@GuardarFactura">
-                    <DataAnnotationsValidator />
-                    <ValidationSummary />
+<h3>Gestión de Facturas</h3>
 
-                    <div class="form-section">
-                        <h5 class="section-title"><i class="fas fa-info-circle"></i> Información Básica</h5>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label>Cliente</label>
-                                    <select @bind="factura.codigoCliente" class="form-control select2-style">
-                                        <option value="">-- Seleccione un cliente --</option>
-                                        @if (clientes != null)
-                                        {
-                                            @foreach (var c in clientes)
-                                            {
-                                                <option value="@c.codigoCliente">@c.nombre @c.apellido</option>
-                                            }
-                                        }
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="form-group">
-                                    <label>Fecha</label>
-                                    <input type="date"
-                                           @bind="factura.fecha"
-                                           @bind:format="yyyy-MM-dd"
-                                           class="form-control" />
-                                </div>
-                            </div>
-                           
-                            <div class="col-md-3">
-                                <div class="form-group">
-                                    <label>Tipo</label>
-                                    <select @bind="factura.tipo" class="form-control">
-                                        <option value="">-- Seleccione --</option>
-                                        <option value="Contado">Contado</option>
-                                        <option value="Crédito">Crédito</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label>Total Factura</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text">$</span>
-                                        <input type="text" @bind="factura.totalFactura" class="form-control" readonly />
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label>Saldo</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text">$</span>
-                                        <input type="text" @bind="factura.saldo" class="form-control" readonly />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h5 class="section-title"><i class="fas fa-cubes"></i> Productos</h5>
-                        <div class="row product-selection">
-                            <div class="col-md-5">
-                                <div class="form-group">
-                                    <label>Descripción</label>
-                                    <select class="form-control select2-style" @onchange="ProductoSeleccionado">
-                                        <option value="">-- Seleccione un producto --</option>
-                                        @if (productos != null && productos.Any())
-                                        {
-                                            @foreach (var prod in productos)
-                                            {
-                                                <option value="@prod.codigoProducto">@prod.descripcion</option>
-                                            }
-                                        }
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label>Código</label>
-                                    <input type="text" class="form-control" value="@productoSeleccionado?.codigoProducto" readonly />
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label>Precio Unitario</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text">$</span>
-                                        <input type="text" class="form-control" value="@productoSeleccionado?.costo.ToString("F2")" readonly />
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label>Cantidad</label>
-                                    <input type="number" class="form-control" @bind="detalleFactura.cantidad" min="1" />
-                                </div>
-                            </div>
-                            <div class="col-md-1 d-flex align-items-end">
-                                <button type="button" class="btn btn-add" @onclick="AgregarProducto">
-                                    <i class="fas fa-plus"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        @if (detallesFactura.Any())
-                        {
-                            <div class="products-table-container">
-                                <table class="table products-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Código</th>
-                                            <th>Descripción</th>
-                                            <th>Precio Unitario</th>
-                                            <th>Cantidad</th>
-                                            <th>Subtotal</th>
-                                            <th>Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var detalle in detallesFactura)
-                                        {
-                                            <tr>
-                                                <td>@detalle.codigoProducto</td>
-                                                <td>@(productos.FirstOrDefault(p => p.codigoProducto == detalle.codigoProducto)?.descripcion)</td>
-                                                <td>$@detalle.precioUnitario.ToString("F2")</td>
-                                                <td>@detalle.cantidad</td>
-                                                <td>$@((detalle.cantidad * detalle.precioUnitario).ToString("F2"))</td>
-                                                <td>
-                                                    <button type="button" class="btn btn-sm btn-action btn-remove"
-                                                            @onclick="@(() => EliminarProducto(detalle.codigoProducto))">
-                                                        <i class="fas fa-trash-alt"></i>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                    <tfoot>
-                                        <tr class="total-row">
-                                            <td colspan="4" class="text-end"><strong>Total:</strong></td>
-                                            <td><strong>$@detallesFactura.Sum(d => d.cantidad * d.precioUnitario).ToString("F2")</strong></td>
-                                            <td></td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        }
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-save">
-                            <i class="fas @(editando ? "fa-sync-alt" : "fa-save")"></i> @(editando ? "Actualizar" : "Registrar")
-                        </button>
-                        @if (editando)
-                        {
-                            <button type="button" class="btn btn-cancel" @onclick="CancelarEdicion">
-                                <i class="fas fa-times"></i> Cancelar
-                            </button>
-                        }
-                        <button type="button" class="btn btn-payment" @onclick="MostrarModalAbono">
-                            <i class="fas fa-money-bill-wave"></i> Abono
-                        </button>
-                    </div>
-                </EditForm>
-            </div>
-        </div>
-    }
-
-    @if (activeTab == "historial")
-    {
-        <div class="card">
-            <div class="card-body">
-                <div class="table-header">
-                    <h5 class="table-title"><i class="fas fa-list"></i> Historial de Facturas</h5>
-                    <div class="table-controls">
-                        <input type="text" class="form-control search-input" placeholder="Buscar..." />
-                    </div>
-                </div>
-
-                @if (facturas == null)
-                {
-                    <div class="loading-container">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Cargando...</span>
-                        </div>
-                        <p>Cargando facturas...</p>
-                    </div>
-                }
-                else if (!facturas.Any())
-                {
-                    <div class="no-data">
-                        <i class="fas fa-file-alt"></i>
-                        <p>No hay facturas registradas</p>
-                    </div>
-                }
-                else
-                {
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Código</th>
-                                    <th>Cliente</th>
-                                    <th>Fecha</th>
-                                    <th>Total</th>
-                                    <th>Saldo</th>
-                                    <th>Tipo</th>
-                                    <th>Estado</th>
-                                    <th>Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var f in facturas.OrderByDescending(f => f.fecha))
-                                {
-                                    <tr>
-                                        <td>#@f.codigoFactura</td>
-                                        <td>@(clientes.FirstOrDefault(c => c.codigoCliente == f.codigoCliente)?.nombre) @(clientes.FirstOrDefault(c => c.codigoCliente == f.codigoCliente)?.apellido)</td>
-                                        <td>@f.fecha.ToShortDateString()</td>
-                                        <td>$@f.totalFactura.ToString("F2")</td>
-                                        <td>
-                                            <span class="badge @GetSaldoBadgeClass(f.saldo, f.totalFactura)">
-                                                $@f.saldo.ToString("F2")
-                                            </span>
-                                        </td>
-                                        <td>@f.tipo</td>
-                                        <td>
-                                            <span class="badge @GetEstadoBadgeClass(f.saldo)">
-                                                @(f.saldo <= 0 ? "Pagado" : "Pendiente")
-                                            </span>
-                                        </td>
-                                        <td class="actions-cell">
-                                            <button class="btn btn-sm btn-edit" @onclick="() => EditarFactura(f)">
-                                                <i class="fas fa-edit"></i>
-                                            </button>
-                                            <button class="btn btn-sm btn-delete" @onclick="() => EliminarFactura(f.codigoFactura)">
-                                                <i class="fas fa-trash"></i>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            </div>
-        </div>
-    }
+<div class="mb-3">
+    <button class="btn @GetTabClass("facturacion") me-2" @onclick="@(() => CambiarTab("facturacion"))">Facturación</button>
+    <button class="btn @GetTabClass("historial")" @onclick="@(() => CambiarTab("historial"))">Historial de Facturas</button>
 </div>
 
-<!-- Modal de Abono -->
-@if (mostrarModalAbono)
+@if (activeTab == "facturacion")
 {
-    <div class="modal-backdrop show" @onclick="CerrarModalAbono"></div>
-    <div class="modal show d-block" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-money-bill-wave me-2"></i> Registrar Abono</h5>
-                    <button type="button" class="btn-close" @onclick="CerrarModalAbono"></button>
+    <div class="factura-formulario">
+        <EditForm Model="@factura" OnValidSubmit="@GuardarFactura">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label>Cliente:</label>
+                    <select @bind="factura.codigoCliente" class="form-control">
+                        <option value="">-- Seleccione un cliente --</option>
+                        @if (clientes != null)
+                        {
+                            @foreach (var c in clientes)
+                            {
+                                <option value="@c.codigoCliente">@c.nombre @c.apellido</option>
+                            }
+                        }
+                    </select>
                 </div>
-                <div class="modal-body">
-                    <EditForm Model="abono" OnValidSubmit="GuardarAbono">
-                        <div class="form-group">
-                            <label>Factura</label>
-                            <select class="form-control" @bind="abono.codigoFactura" @bind:event="onchange">
-                                <option value="0">Seleccione una factura pendiente</option>
-                                @if (facturas != null && facturas.Any())
-                                {
-                                    @foreach (var factura in facturas.OrderBy(f => f.codigoFactura))
-                                    {
-                                        <option value="@factura.codigoFactura">
-                                            Factura #@factura.codigoFactura - Saldo: @factura.saldo.ToString("C")
-                                        </option>
-                                    }
-                                }
-                                else
-                                {
-                                    <option value="0" disabled>No hay facturas pendientes</option>
-                                }
-                            </select>
-                        </div>
 
-                        @if (abono.codigoFactura > 0)
-                        {
-                            <div class="form-group">
-                                <label>Total de Factura</label>
-                                <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <input class="form-control" value="@totalFactura.ToString("F2")" readonly />
-                                </div>
-                            </div>
+                <div class="col-md-6 mb-3">
+                    <label>Fecha:</label>
+                    <input type="date" @bind="factura.fecha" class="form-control" />
+                </div>
 
-                            <div class="form-group">
-                                <label>Saldo Actual</label>
-                                <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <input class="form-control" value="@saldoActual.ToString("F2")" readonly />
-                                </div>
-                            </div>
+                <div class="col-md-6 mb-3">
+                    <label>Total Factura:</label>
+                    <input type="text" @bind="factura.totalFactura" class="form-control" readonly />
+                </div>
 
-                            <div class="form-group">
-                                <label>Monto del Abono</label>
-                                <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <InputNumber @bind-Value="abono.montoAbono" class="form-control"
-                                                 min="0" max="@saldoActual" />
-                                </div>
-                                <small class="text-muted">Máximo permitido: @saldoActual.ToString("C")</small>
-                            </div>
+                <div class="col-md-6 mb-3">
+                    <label>Saldo:</label>
+                    <input type="text" @bind="factura.saldo" class="form-control" readonly />
+                </div>
 
-                            <div class="form-group">
-                                <label>Fecha del Abono</label>
-                                <input type="date" class="form-control"
-                                       @bind="abono.fechaAbono"
-                                       @bind:format="yyyy-MM-dd" />
-                            </div>
-
-                            <div class="form-group">
-                                <label>Estado</label>
-                                <div class="payment-status @(estadoFactura == "Pagado" ? "paid" : "pending")">
-                                    @estadoFactura
-                                </div>
-                            </div>
-                        }
-
-                        @if (!string.IsNullOrEmpty(errorMessage))
-                        {
-                            <div class="alert alert-danger mt-3">
-                                <i class="fas fa-exclamation-circle me-2"></i>@errorMessage
-                            </div>
-                        }
-
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" @onclick="CerrarModalAbono">
-                                <i class="fas fa-times"></i> Cancelar
-                            </button>
-                            <button type="submit" class="btn btn-primary"
-                                    disabled="@(abono.codigoFactura == 0 || abono.montoAbono <= 0)">
-                                <i class="fas fa-check"></i> Guardar Abono
-                            </button>
-                        </div>
-                    </EditForm>
+                <div class="col-md-6 mb-3">
+                    <label>Tipo:</label>
+                    <select @bind="factura.tipo" class="form-control">
+                        <option value="">-- Seleccione --</option>
+                        <option value="Contado">Contado</option>
+                        <option value="Crédito">Crédito</option>
+                    </select>
                 </div>
             </div>
-        </div>
+
+            <hr />
+            <h5>Agregar Producto</h5>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label>Descripción del Producto:</label>
+                    <select class="form-control" @onchange="ProductoSeleccionado">
+                        <option value="">-- Seleccione un producto --</option>
+                        @if (productos != null && productos.Any())
+                        {
+                            @foreach (var prod in productos)
+                            {
+                                <option value="@prod.codigoProducto">@prod.descripcion</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-2 mb-3">
+                    <label>Código:</label>
+                    <input type="text" class="form-control" value="@productoSeleccionado?.codigoProducto" readonly />
+                </div>
+
+                <div class="col-md-2 mb-3">
+                    <label>Precio Unitario:</label>
+                    <input type="text" class="form-control" value="@productoSeleccionado?.costo.ToString("F2")" readonly />
+                </div>
+
+                <div class="col-md-2 mb-3">
+                    <label>Cantidad:</label>
+                    <input type="number" class="form-control" @bind="detalleFactura.cantidad" min="1" />
+                </div>
+
+                <div class="col-md-2 mb-3 d-flex align-items-end">
+                    <button type="button" class="btn btn-primary" @onclick="AgregarProducto">Agregar</button>
+                </div>
+            </div>
+
+            <!-- Tabla de productos agregados -->
+            @if (detallesFactura.Any())
+            {
+                <div class="mt-3">
+                    <h5>Productos a Facturar</h5>
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Descripción</th>
+                                <th>Precio Unitario</th>
+                                <th>Cantidad</th>
+                                <th>Subtotal</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var detalle in detallesFactura)
+                            {
+                                <tr>
+                                    <td>@detalle.codigoProducto</td>
+                                    <td>@(productos.FirstOrDefault(p => p.codigoProducto == detalle.codigoProducto)?.descripcion)</td>
+                                    <td>@detalle.precioUnitario.ToString("F2")</td>
+                                    <td>@detalle.cantidad</td>
+                                    <td>@((detalle.cantidad * detalle.precioUnitario).ToString("F2"))</td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-danger"
+                                                @onclick="@(() => EliminarProducto(detalle.codigoProducto))">
+                                            Eliminar
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="4" class="text-end"><strong>Total:</strong></td>
+                                <td><strong>@detallesFactura.Sum(d => d.cantidad * d.precioUnitario).ToString("F2")</strong></td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+
+            <button type="submit" class="btn btn-primary mt-2">@(editando ? "Actualizar" : "Registrar")</button>
+            @if (editando)
+            {
+                <button type="button" class="btn btn-secondary mt-2 ms-2" @onclick="CancelarEdicion">Cancelar</button>
+            }
+
+            <button type="button" class="btn btn-success mt-3" @onclick="MostrarModalAbono">Abono</button>
+        </EditForm>
+
+        @if (mostrarModalAbono)
+        {
+            <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Registrar Abono</h5>
+                            <button type="button" class="btn-close" @onclick="CerrarModalAbono"></button>
+                        </div>
+                        <div class="modal-body">
+                            <EditForm Model="abono" OnValidSubmit="GuardarAbono">
+                                <div class="form-group">
+                                    <label>Factura</label>
+                                    <!-- Selector de factura -->
+                                    <select class="form-control" @bind="selectedCodigoFactura">
+                                        <option disabled value="0">Seleccione una factura</option>
+                                        @if (facturas != null)
+                                        {
+                                            foreach (var factura in facturas)
+                                            {
+                                                <option value="@factura.codigoFactura">@factura.codigoFactura</option>
+                                            }
+                                        }
+                                    </select>
+
+
+
+                                    <!-- Campos de solo lectura -->
+                                    <div class="form-group">
+                                        <label>Total de Factura</label>
+                                        <input class="form-control" value="@totalFactura" readonly />
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Saldo Actual</label>
+                                        <input class="form-control" value="@saldoActual" readonly />
+                                    </div>
+
+                                </div>
+                                <div class="form-group">
+                                    <label>Abono</label>
+                                    <InputNumber @bind-Value="abono.montoAbono" class="form-control" @oninput="ActualizarEstadoFactura" />
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Estado</label>
+                                    <input class="form-control" value="@estadoFactura" readonly />
+                                </div>
+
+                                <button class="btn btn-primary" type="submit">Guardar Abono</button>
+                            </EditForm>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
     </div>
 }
 
-<!-- Modal de Éxito -->
-@if (mostrarModalExito)
+@if (activeTab == "historial")
 {
-    <div class="modal-backdrop show" @onclick="CerrarModalExito"></div>
-    <div class="modal show d-block" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <div class="modal-content success-modal">
-                <div class="modal-body text-center">
-                    <div class="success-icon">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <h5>@mensajeExito</h5>
-                    <button class="btn btn-success mt-3" @onclick="CerrarModalExito">
-                        Aceptar
-                    </button>
-                </div>
-            </div>
-        </div>
+    <div class="factura-lista">
+        <h4>Lista de Facturas</h4>
+        @if (facturas == null)
+        {
+            <p><em>Cargando...</em></p>
+        }
+        else if (facturas.Count == 0)
+        {
+            <p>No hay facturas registradas.</p>
+        }
+        else
+        {
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Cliente</th>
+                        <th>Fecha</th>
+                        <th>Total</th>
+                        <th>Saldo</th>
+                        <th>Tipo</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in facturas)
+                    {
+                        <tr>
+                            <td>@f.codigoFactura</td>
+                            <td>@(clientes.FirstOrDefault(c => c.codigoCliente == f.codigoCliente)?.nombre) @(clientes.FirstOrDefault(c => c.codigoCliente == f.codigoCliente)?.apellido)</td>
+                            <td>@f.fecha.ToShortDateString()</td>
+                            <td>@f.totalFactura.ToString("F2")</td>
+                            <td>@f.saldo.ToString("F2")</td>
+                            <td>@f.tipo</td>
+                            <td>
+                                <button class="btn btn-sm btn-warning" @onclick="() => EditarFactura(f)">Editar</button>
+                                <button class="btn btn-sm btn-danger ms-1" @onclick="() => EliminarFactura(f.codigoFactura)">Eliminar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
     </div>
 }
 
 @code {
-    // Variables de estado
-    private string activeTab = "facturacion";
-    private bool editando = false;
+    private List<Producto> productos = new();
+    private Producto productoSeleccionado = new();
+    private DetalleFactura detalleFactura = new();
+    private List<DetalleFactura> detallesFactura = new();
+
     private bool mostrarModalAbono = false;
+    private Abono abono = new();
+
+    private List<Cliente> clientes = new();
+    private List<Factura> facturas;
+    private Factura factura = new();
+    private bool editando = false;
+    private string activeTab = "facturacion";
+
     private bool mostrarModalExito = false;
     private string mensajeExito = "";
-    private string errorMessage = "";
-    private string estadoFactura = "Pendiente";
 
-    // Modelos y listas de datos
-   
-    private Factura factura = new();
-    private Abono abono = new();
-    private List<Factura> facturas = new();
-    private List<Cliente> clientes = new();
-    private List<Producto> productos = new();
-    private List<DetalleFactura> detallesFactura = new();
-    private DetalleFactura detalleFactura = new();
-    private Producto productoSeleccionado = new();
-
-    // Variables para el modal de abono
     private decimal totalFactura = 0;
+    private decimal saldoFactura = 0;
     private decimal saldoActual = 0;
-    private int selectedCodigoFactura = 0;
+    private int facturaSeleccionada = 0;
+    private string estadoFactura = "Pendiente";
+    private decimal montoFacturaSeleccionada;
+    private decimal saldoFacturaSeleccionada;
 
-    // Métodos para cambiar pestañas
-    private void CambiarTab(string tab) => activeTab = tab;
-    private string GetTabClass(string tab) => tab == activeTab ? "btn-primary" : "btn-outline-primary";
+    private void CerrarModalExito()
+    {
+        mostrarModalExito = false;
+    }
 
-    // Métodos de inicialización
+    [Inject] private IJSRuntime JS { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         await CargarProductos();
@@ -436,26 +300,27 @@
 
     private async Task CargarProductos()
     {
-        productos = await Http.GetFromJsonAsync<List<Producto>>("api/Producto/GetAllProductos") ?? new();
+        productos = await Http.GetFromJsonAsync<List<Producto>>("api/Producto/GetAllProductos")
+                    ?? new List<Producto>();
     }
 
     private async Task CargarClientes()
     {
-        clientes = await Http.GetFromJsonAsync<List<Cliente>>("api/Cliente/GetAllClientes") ?? new();
+        clientes = await Http.GetFromJsonAsync<List<Cliente>>("api/Cliente/GetAllClientes")
+                   ?? new List<Cliente>();
     }
 
-    private async Task CargarFacturas()
-    {
-        var todasFacturas = await Http.GetFromJsonAsync<List<Factura>>("api/Factura/GetAllFacturas");
-        facturas = todasFacturas?.Where(f => f.saldo > 0 && (f.estado == null || f.estado != "Pagado")).ToList() ?? new();
-    }
+    // private async Task CargarFacturas()
+    // {
+    //     facturas = await Http.GetFromJsonAsync<List<Factura>>("api/Factura/GetAllFacturas")
+    //                ?? new List<Factura>();
+    // }
 
-    // Métodos para manejo de productos
     private void ProductoSeleccionado(ChangeEventArgs e)
     {
         if (int.TryParse(e.Value?.ToString(), out int codigoSeleccionado))
         {
-            productoSeleccionado = productos.FirstOrDefault(p => p.codigoProducto == codigoSeleccionado) ?? new();
+            productoSeleccionado = productos.FirstOrDefault(p => p.codigoProducto == codigoSeleccionado) ?? new Producto();
             detalleFactura.codigoProducto = productoSeleccionado.codigoProducto;
             detalleFactura.precioUnitario = productoSeleccionado.costo;
         }
@@ -471,6 +336,7 @@
         if (detalleExistente != null)
         {
             detalleExistente.cantidad += detalleFactura.cantidad;
+            detalleExistente.subtotal = detalleExistente.cantidad * detalleExistente.precioUnitario;
         }
         else
         {
@@ -478,15 +344,18 @@
                 {
                     codigoProducto = productoSeleccionado.codigoProducto,
                     cantidad = detalleFactura.cantidad,
-                    precioUnitario = productoSeleccionado.costo
+                    precioUnitario = productoSeleccionado.costo,
+                    subtotal = detalleFactura.cantidad * productoSeleccionado.costo
                 });
         }
 
-        factura.totalFactura = detallesFactura.Sum(d => d.cantidad * d.precioUnitario);
+        // Actualizar totales
+        factura.totalFactura = detallesFactura.Sum(d => d.subtotal);
         factura.saldo = factura.totalFactura;
 
-        productoSeleccionado = new();
-        detalleFactura = new();
+        // Resetear para nuevo producto
+        productoSeleccionado = new Producto();
+        detalleFactura = new DetalleFactura();
     }
 
     private void EliminarProducto(int codigoProducto)
@@ -495,12 +364,11 @@
         if (detalle != null)
         {
             detallesFactura.Remove(detalle);
-            factura.totalFactura = detallesFactura.Sum(d => d.cantidad * d.precioUnitario);
+            factura.totalFactura = detallesFactura.Sum(d => d.subtotal);
             factura.saldo = factura.totalFactura;
         }
     }
 
-    // Métodos para facturas
     private async Task GuardarFactura()
     {
         try
@@ -516,6 +384,7 @@
             if (editando)
             {
                 response = await Http.PutAsJsonAsync($"api/Factura/ActualizarFactura/{factura.codigoFactura}", facturaConDetalles);
+
                 if (response.IsSuccessStatusCode)
                 {
                     await CargarFacturas();
@@ -528,14 +397,16 @@
             else
             {
                 response = await Http.PostAsJsonAsync("api/Factura/AgregarFactura", facturaConDetalles);
+
                 if (response.IsSuccessStatusCode)
                 {
                     var result = await response.Content.ReadFromJsonAsync<FacturaResponse>();
-                    factura.codigoFactura = result?.codigoFactura ?? 0;
+                    factura.codigoFactura = result.codigoFactura;
+
                     await CargarFacturas();
                     LimpiarFormulario();
                     CambiarTab("historial");
-                    mensajeExito = result?.message ?? "Factura registrada exitosamente";
+                    mensajeExito = result.message ?? "Factura registrada exitosamente";
                     mostrarModalExito = true;
                 }
             }
@@ -554,12 +425,106 @@
 
     private void LimpiarFormulario()
     {
-        factura = new();
-        detallesFactura = new();
-        productoSeleccionado = new();
-        detalleFactura = new();
+        factura = new Factura();
+        detallesFactura = new List<DetalleFactura>();
+        productoSeleccionado = new Producto();
+        detalleFactura = new DetalleFactura();
         editando = false;
     }
+
+    private void MostrarModalAbono()
+    {
+        abono = new Abono { fechaAbono = DateTime.Today };
+        mostrarModalAbono = true;
+    }
+
+    private void CerrarModalAbono() => mostrarModalAbono = false;
+    //
+    private string errorMessage;
+    private async Task GuardarAbono()
+    {
+        if (abono.codigoFactura == 0)
+        {
+            errorMessage = "Debe seleccionar una factura válida.";
+            return;
+        }
+        try
+        {
+            var response = await Http.PostAsJsonAsync("http://localhost:5282/api/abono/registrar-abono", abono);
+
+            if (response.IsSuccessStatusCode)
+            {
+                saldoFactura -= abono.montoAbono;
+                estadoFactura = saldoFactura <= 0 ? "Pagado" : "Pendiente";
+                abono = new Abono();
+                errorMessage = string.Empty;
+            }
+            else
+            {
+                errorMessage = $"Error al guardar abono: {response.StatusCode}";
+                var content = await response.Content.ReadAsStringAsync();
+                if (!string.IsNullOrEmpty(content))
+                    errorMessage += $", Detalle: {content}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Excepción: {ex.Message}";
+        }
+    }
+    private int selectedCodigoFactura
+    {
+        get => abono.codigoFactura;
+        set
+        {
+            if (abono.codigoFactura != value)
+            {
+                abono.codigoFactura = value;
+                _ = OnFacturaSeleccionada(value);
+            }
+        }
+    }
+
+    private async Task OnFacturaSeleccionada(int codigoFactura)
+    {
+        try
+        {
+            var factura = await Http.GetFromJsonAsync<Factura>($"http://localhost:5282/api/factura/GetFacturaPorCodigo/{codigoFactura}");
+
+            if (factura != null)
+            {
+                totalFactura = factura.totalFactura;
+                saldoActual = factura.saldo;
+                estadoFactura = saldoActual <= 0 ? "Pagado" : "Pendiente";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error al obtener factura: " + ex.Message);
+        }
+    }
+
+
+
+    private void ActualizarEstadoFactura(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out decimal abonoActual))
+        {
+            abono.montoAbono = abonoActual;
+            var nuevoSaldo = saldoFactura - abono.montoAbono;
+            estadoFactura = nuevoSaldo <= 0 ? "Pagado" : "Pendiente";
+        }
+    }
+
+
+    private async Task CargarFacturas()
+    {
+        facturas = await Http.GetFromJsonAsync<List<Factura>>("http://localhost:5282/api/factura/GetAllFacturas");
+
+    }
+
+
 
     private void EditarFactura(Factura f)
     {
@@ -575,6 +540,11 @@
         editando = true;
     }
 
+    private void CancelarEdicion()
+    {
+        LimpiarFormulario();
+    }
+
     private async Task EliminarFactura(int codigo)
     {
         var confirm = await JS.InvokeAsync<bool>("confirm", $"¿Estás seguro de eliminar la factura #{codigo}?");
@@ -585,639 +555,157 @@
         }
     }
 
-    private void CancelarEdicion()
-    {
-        LimpiarFormulario();
-    }
+    private void CambiarTab(string tab) => activeTab = tab;
+    private string GetTabClass(string tab) => tab == activeTab ? "btn-primary" : "btn-outline-primary";
 
-    // Métodos para abonos
-    private void MostrarModalAbono()
-    {
-        abono = new Abono { fechaAbono = DateTime.Today };
-        mostrarModalAbono = true;
-    }
-
-    private void CerrarModalAbono()
-    {
-        mostrarModalAbono = false;
-        errorMessage = "";
-    }
-
-    private void CerrarModalExito()
-    {
-        mostrarModalExito = false;
-    }
-
-    private async Task OnFacturaSeleccionada()
-    {
-        errorMessage = "";
-
-        if (abono.codigoFactura > 0)
-        {
-            var facturaSeleccionada = await Http.GetFromJsonAsync<Factura>($"api/factura/GetFacturaPorCodigo/{abono.codigoFactura}");
-
-            if (facturaSeleccionada != null)
-            {
-                if (facturaSeleccionada.saldo <= 0 || facturaSeleccionada.estado == "Pagado")
-                {
-                    errorMessage = "Esta factura ya está pagada completamente.";
-                    abono.codigoFactura = 0;
-                    return;
-                }
-
-                totalFactura = facturaSeleccionada.totalFactura;
-                saldoActual = facturaSeleccionada.saldo;
-                estadoFactura = saldoActual <= 0 ? "Pagado" : "Pendiente";
-                abono.fechaAbono = DateTime.Today;
-            }
-        }
-        else
-        {
-            totalFactura = 0;
-            saldoActual = 0;
-            estadoFactura = "Pendiente";
-        }
-        StateHasChanged();
-    }
-
-
-    private void ActualizarEstadoFactura()
-    {
-        estadoFactura = (saldoActual - abono.montoAbono) <= 0 ? "Pagado" : "Pendiente";
-    }
-
-    private async Task GuardarAbono()
-    {
-        try
-        {
-            // Validar que se haya seleccionado una factura
-            if (abono.codigoFactura == 0)
-            {
-                errorMessage = "Debe seleccionar una factura válida.";
-                return;
-            }
-
-            // Obtener la factura actualizada del servidor
-            var facturaActual = await Http.GetFromJsonAsync<Factura>($"api/factura/GetFacturaPorCodigo/{abono.codigoFactura}");
-
-            if (facturaActual == null)
-            {
-                errorMessage = "No se encontró la factura seleccionada.";
-                return;
-            }
-
-            // Validar que la factura no esté pagada
-            if (facturaActual.saldo <= 0 || facturaActual.estado == "Pagado")
-            {
-                errorMessage = "No se puede registrar abonos a una factura ya pagada.";
-                return;
-            }
-
-            // Validar el monto del abono
-            if (abono.montoAbono <= 0)
-            {
-                errorMessage = "El monto del abono debe ser mayor que cero.";
-                return;
-            }
-
-            if (abono.montoAbono > facturaActual.saldo)
-            {
-                errorMessage = $"El monto excede el saldo pendiente. Saldo actual: {facturaActual.saldo:C}";
-                return;
-            }
-
-            abono.fechaAbono = DateTime.Now;
-            var response = await Http.PostAsJsonAsync("api/abono/registrar-abono", abono);
-
-            if (response.IsSuccessStatusCode)
-            {
-                var result = await response.Content.ReadFromJsonAsync<AbonoResponse>();
-
-                // Actualizar la lista de facturas
-                await CargarFacturas();
-
-                mensajeExito = result.message;
-                mostrarModalExito = true;
-                abono = new Abono();
-                StateHasChanged();
-
-                await Task.Delay(2000);
-                mostrarModalExito = false;
-                mostrarModalAbono = false;
-            }
-            else
-            {
-                errorMessage = await response.Content.ReadAsStringAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error al registrar el abono: {ex.Message}";
-        }
-    }
-
-
-    public class AbonoResponse
-    {
-        public decimal nuevoSaldo { get; set; }
-        public string nuevoEstado { get; set; }
-        public string message { get; set; }
-    }
-    // Clases auxiliares
     public class FacturaConDetalles
     {
-        public Factura Factura { get; set; } = new();
-        public List<DetalleFactura> Detalles { get; set; } = new();
+        public Factura Factura { get; set; }
+        public List<DetalleFactura> Detalles { get; set; }
     }
 
     public class FacturaResponse
     {
         public int codigoFactura { get; set; }
-        public string? message { get; set; }
-    }
-
-    // Métodos para estilos
-    private string GetSaldoBadgeClass(decimal saldo, decimal total)
-    {
-        if (saldo <= 0) return "bg-success";
-        if (saldo == total) return "bg-danger";
-        return "bg-warning";
-    }
-
-    private string GetEstadoBadgeClass(decimal saldo)
-    {
-        return saldo <= 0 ? "bg-success" : "bg-warning";
+        public string message { get; set; }
     }
 }
 
+
 <style>
-    /* Estilos base */
-    :root {
-        --primary-color: #1A2E5A;
-        --secondary-color: #E30613;
-        --success-color: #28a745;
-        --warning-color: #ffc107;
-        --danger-color: #dc3545;
-        --light-color: #f8f9fa;
-        --dark-color: #343a40;
-        --gray-color: #6c757d;
-        --border-radius: 8px;
-        --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        --transition: all 0.3s ease;
+    h3 {
+        color: #1A2E5A;
+        margin-bottom: 20px;
+        font-weight: 600;
+        border-bottom: 2px solid #E30613;
+        padding-bottom: 8px;
+        display: inline-block;
     }
-
-    body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        color: #333;
-        background-color: #f5f7fa;
-    }
-
-    /* Contenedor principal */
+    /* Estilos personalizados para Gestión de Facturas */
     .factura-container {
-        padding: 2rem;
-        max-width: 1400px;
-        margin: 0 auto;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        padding: 20px;
+        background-color: #f5f7fa;
+        min-height: 100vh;
     }
 
-    /* Encabezado */
-    .header-section {
-        margin-bottom: 2rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 1rem;
+    .factura-formulario {
+        background-color: #ffffff;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        margin-bottom: 30px;
     }
 
-    .page-title {
-        color: var(--primary-color);
-        font-weight: 700;
-        margin: 0;
-        font-size: 1.8rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
 
-    .tab-buttons {
-        display: flex;
-        gap: 0.5rem;
-    }
 
-        .tab-buttons .btn {
-            border-radius: var(--border-radius);
-            padding: 0.5rem 1.25rem;
+        .factura-formulario label {
             font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            transition: var(--transition);
+            margin-top: 15px;
+            color: #1A2E5A;
         }
 
-        .tab-buttons .btn-primary {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
+        .factura-formulario .form-control {
+            margin-top: 5px;
+            margin-bottom: 15px;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 14px;
         }
 
-        .tab-buttons .btn-outline-primary {
-            color: var(--primary-color);
-            border-color: var(--primary-color);
+        .factura-formulario button {
+            margin-top: 10px;
+            font-weight: 500;
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
         }
 
-            .tab-buttons .btn-outline-primary:hover {
-                background-color: var(--primary-color);
-                color: white;
+        .factura-formulario .btn-primary {
+            background-color: #1A2E5A;
+            color: #fff;
+        }
+
+            .factura-formulario .btn-primary:hover {
+                background-color: #153063;
             }
 
-    /* Tarjetas */
-    .card {
-        border: none;
-        border-radius: var(--border-radius);
-        box-shadow: var(--box-shadow);
-        margin-bottom: 2rem;
-        overflow: hidden;
-    }
-
-    .card-header {
-        background-color: var(--primary-color);
-        color: white;
-        padding: 1rem 1.5rem;
-        font-weight: 600;
-    }
-
-    .card-body {
-        padding: 1.5rem;
-    }
-
-    /* Formularios */
-    .form-section {
-        margin-bottom: 2rem;
-        padding-bottom: 1.5rem;
-        border-bottom: 1px solid #eee;
-    }
-
-    .section-title {
-        color: var(--primary-color);
-        font-weight: 600;
-        margin-bottom: 1.5rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .form-group {
-        margin-bottom: 1.25rem;
-    }
-
-    label {
-        font-weight: 500;
-        margin-bottom: 0.5rem;
-        color: var(--dark-color);
-    }
-
-    .form-control {
-        border-radius: var(--border-radius);
-        border: 1px solid #ced4da;
-        padding: 0.5rem 0.75rem;
-        transition: var(--transition);
-    }
-
-        .form-control:focus {
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 0.2rem rgba(26, 46, 90, 0.25);
+        .factura-formulario .btn-secondary {
+            background-color: #E30613;
+            color: #fff;
         }
 
-    .select2-style {
-        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
-        background-repeat: no-repeat;
-        background-position: right 0.75rem center;
-        background-size: 16px 12px;
-        appearance: none;
-    }
+            .factura-formulario .btn-secondary:hover {
+                background-color: #b4040d;
+            }
 
-    .input-group-text {
-        background-color: #e9ecef;
-        border: 1px solid #ced4da;
-    }
-
-    /* Tablas */
-    .table-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-        flex-wrap: wrap;
-        gap: 1rem;
-    }
-
-    .table-title {
-        color: var(--primary-color);
+    /* Estilos para la tabla de facturas */
+    .factura-lista h4 {
+        color: #1A2E5A;
+        margin-bottom: 20px;
         font-weight: 600;
-        margin: 0;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .search-input {
-        max-width: 250px;
     }
 
     .table {
-        color: #333;
-        margin-bottom: 0;
-    }
-
-        .table th {
-            background-color: var(--primary-color);
-            color: white;
-            font-weight: 500;
-            border-bottom: none;
-            padding: 1rem;
-        }
-
-        .table td {
-            padding: 1rem;
-            vertical-align: middle;
-            border-top: 1px solid #eee;
-        }
-
-    .table-hover tbody tr:hover {
-        background-color: rgba(26, 46, 90, 0.05);
-    }
-
-    .products-table-container {
-        border: 1px solid #eee;
-        border-radius: var(--border-radius);
+        width: 100%;
+        border-collapse: collapse;
+        background-color: #ffffff;
+        border-radius: 8px;
         overflow: hidden;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
     }
 
-    .products-table {
-        margin-bottom: 0;
-    }
-
-        .products-table th {
-            background-color: #f8f9fa;
-            color: var(--dark-color);
+        .table thead {
+            background-color: #1A2E5A;
+            color: white;
         }
 
-    .total-row {
-        background-color: #f8f9fa;
-        font-weight: 600;
+        .table th, .table td {
+            padding: 12px 15px;
+            text-align: left;
+            font-size: 14px;
+            border-bottom: 1px solid #ddd;
+        }
+
+    .table-striped tbody tr:nth-child(odd) {
+        background-color: #f2f2f2;
     }
 
-    /* Botones */
-    .btn {
-        border-radius: var(--border-radius);
-        padding: 0.5rem 1.25rem;
+    .table button {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 5px;
         font-weight: 500;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-        transition: var(--transition);
+        cursor: pointer;
+        transition: background-color 0.3s;
     }
 
-    .btn-save {
-        background-color: var(--primary-color);
-        color: white;
-        border: none;
-    }
-
-        .btn-save:hover {
-            background-color: #142448;
-            color: white;
-        }
-
-    .btn-cancel {
-        background-color: var(--gray-color);
-        color: white;
-        border: none;
-    }
-
-        .btn-cancel:hover {
-            background-color: #5a6268;
-            color: white;
-        }
-
-    .btn-payment {
-        background-color: var(--success-color);
-        color: white;
-        border: none;
-    }
-
-        .btn-payment:hover {
-            background-color: #218838;
-            color: white;
-        }
-
-    .btn-add {
-        background-color: var(--success-color);
-        color: white;
-        border: none;
-        width: 100%;
-        height: 38px;
-    }
-
-        .btn-add:hover {
-            background-color: #218838;
-            color: white;
-        }
-
-    .btn-action {
-        width: 32px;
-        height: 32px;
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .btn-edit {
-        background-color: var(--warning-color);
-        color: var(--dark-color);
-    }
-
-        .btn-edit:hover {
-            background-color: #e0a800;
-            color: var(--dark-color);
-        }
-
-    .btn-delete {
-        background-color: var(--danger-color);
+    .table .btn-warning {
+        background-color: #f39c12;
         color: white;
     }
 
-        .btn-delete:hover {
-            background-color: #c82333;
-            color: white;
+        .table .btn-warning:hover {
+            background-color: #d68910;
         }
 
-    .btn-remove {
-        background-color: var(--danger-color);
+    .table .btn-danger {
+        background-color: #e74c3c;
         color: white;
     }
 
-        .btn-remove:hover {
-            background-color: #c82333;
-            color: white;
+        .table .btn-danger:hover {
+            background-color: #c0392b;
         }
 
-    /* Badges */
-    .badge {
-        padding: 0.35em 0.65em;
-        font-weight: 500;
-        border-radius: 50rem;
-        font-size: 0.85em;
+    /* Estilo de mensaje de carga y vacío */
+    p {
+        color: #666;
+        font-size: 15px;
+        margin-top: 15px;
     }
 
-    /* Estados de pago */
-    .payment-status {
-        padding: 0.5rem;
-        border-radius: var(--border-radius);
-        font-weight: 500;
-        text-align: center;
-    }
-
-        .payment-status.paid {
-            background-color: rgba(40, 167, 69, 0.2);
-            color: var(--success-color);
-        }
-
-        .payment-status.pending {
-            background-color: rgba(255, 193, 7, 0.2);
-            color: var(--warning-color);
-        }
-
-    /* Sección de acciones */
-    .form-actions {
-        display: flex;
-        gap: 0.75rem;
-        margin-top: 1.5rem;
-        flex-wrap: wrap;
-    }
-
-    /* Modales */
-    .modal-backdrop {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        z-index: 1040;
-    }
-
-    .modal {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 1050;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        overflow-y: auto;
-    }
-
-    .modal-content {
-        border: none;
-        border-radius: var(--border-radius);
-        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
-    }
-
-    .modal-header {
-        border-bottom: 1px solid #eee;
-        padding: 1.25rem 1.5rem;
-    }
-
-    .modal-title {
-        font-weight: 600;
-        margin: 0;
-    }
-
-    .modal-body {
-        padding: 1.5rem;
-    }
-
-    .modal-footer {
-        border-top: 1px solid #eee;
-        padding: 1rem 1.5rem;
-        display: flex;
-        justify-content: flex-end;
-        gap: 0.75rem;
-    }
-
-    /* Modal de éxito */
-    .success-modal .modal-content {
-        border: none;
-    }
-
-    .success-modal .modal-body {
-        padding: 2rem;
-    }
-
-    .success-icon {
-        font-size: 4rem;
-        color: var(--success-color);
-        margin-bottom: 1.5rem;
-    }
-
-    /* Estados */
-    .loading-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 3rem;
-        color: var(--gray-color);
-    }
-
-    .no-data {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 3rem;
-        color: var(--gray-color);
-    }
-
-        .no-data i {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            color: #ddd;
-        }
-
-    /* Responsividad */
-    @@media (max-width: 768px) {
-        .product-selection .col-md-1 {
-            margin-top: 1rem;
-        }
-
-        .form-actions {
-            flex-direction: column;
-        }
-
-            .form-actions .btn {
-                width: 100%;
-            }
-    }
-
-    /* Animaciones */
-    @@keyframes fadeIn {
-        from {
-            opacity: 0;
-            transform: translateY(10px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    .modal-content {
-        animation: fadeIn 0.3s ease-out;
-    }
 </style>

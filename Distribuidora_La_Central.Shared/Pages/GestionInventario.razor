@@ -94,63 +94,84 @@
         </div>
     </section>
 
-    <!-- Formulario para agregar/editar producto -->
     @if (showForm)
     {
         <div class="modal-backdrop" @onclick="HideForm"></div>
-        <div class="add-product-form">
+        <div class="product-form-container">
             <div class="form-header">
-                <h3>@(productoActual.codigoProducto == 0 ? "Agregar Producto" : "Editar Producto")</h3>
-                <button class="close-btn" @onclick="HideForm">×</button>
+                <h3>
+                    <i class="fas @(productoActual.codigoProducto == 0 ? "fa-plus-circle" : "fa-edit")"></i>
+                    @(productoActual.codigoProducto == 0 ? "AGREGAR PRODUCTO" : "EDITAR PRODUCTO")
+                </h3>
+                <button class="close-btn" @onclick="HideForm">
+                    <i class="fas fa-times"></i>×
+                </button>
             </div>
+
             <div class="form-body">
-
-                <div class="form-row">
+                <div class="form-grid">
+                    <!-- Fila 1 -->
                     <div class="form-group">
-                        <label>Descripción:</label>
-                        <input type="text" @bind="productoActual.descripcion" />
+                        <label><i class="fas fa-align-left"></i> Descripción</label>
+                        <input type="text" @bind="productoActual.descripcion" class="form-input" />
                     </div>
-                    <div class="form-group">
-                        <label>Cantidad:</label>
-                        <input type="number" @bind="productoActual.cantidad" />
-                    </div>
-                </div>
 
-                <div class="form-row">
-                    <div class="form-group full-width">
-                        <label>Categoría:</label>
-                        <div class="select-group">
+                    <div class="form-group">
+                        <label><i class="fas fa-hashtag"></i> Cantidad</label>
+                        <input type="number" @bind="productoActual.cantidad" class="form-input" />
+                    </div>
+
+                    <!-- Fila 2 -->
+                    <div class="form-group">
+                        <label><i class="fas fa-ruler"></i> Unidad de Medida</label>
+                        <input type="text" @bind="productoActual.unidadMedida" class="form-input" />
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fas fa-percentage"></i> Margen de Ganancia (%)</label>
+                        <input type="number" step="0.01" @bind="productoActual.margenGanancia" class="form-input" />
+                    </div>
+
+                    <!-- Fila 3 -->
+                    <div class="form-group">
+                        <label><i class="fas fa-tag"></i> Categoría</label>
+                        <div class="select-with-button">
                             <select @bind="productoActual.idCategoria" class="form-select">
-                                <option disabled value="">Seleccione una categoría</option>
+                                <option value="0">Seleccione una categoría</option>
                                 @foreach (var categoria in categoriaProductos.OrderBy(c => c.nombre))
                                 {
                                     <option value="@categoria.idCategoria">@categoria.nombre</option>
                                 }
                             </select>
-                            <button class="add-button" @onclick="ShowAddCategoriaForm">+</button>
+                            <button class="add-category-btn" @onclick="ShowAddCategoriaForm" title="Agregar categoría">
+                                <i class="fas fa-plus"></i><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="#007bff" viewBox="0 0 24 24">
+                                    <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                                </svg>
+
+                            </button>
                         </div>
                     </div>
-                </div>
 
-                <div class="form-row">
                     <div class="form-group">
-                        <label>Descuento (%):</label>
-                        <input type="number" step="0.1" @bind="productoActual.descuento" />
+                        <label><i class="fas fa-percent"></i> Descuento (%)</label>
+                        <input type="number" step="0.1" @bind="productoActual.descuento" class="form-input" />
                     </div>
-                    <div class="form-group">
-                        <label>Costo:</label>
-                        <input type="number" step="0.01" @bind="productoActual.costo" />
-                    </div>
-                </div>
 
-                <div class="form-row">
+                    <!-- Fila 4 -->
                     <div class="form-group">
-                        <label>Items:</label>
-                        <input type="number" @bind="productoActual.items" />
+                        <label><i class="fas fa-dollar-sign"></i> Costo</label>
+                        <input type="number" step="0.01" @bind="productoActual.costo" class="form-input" />
                     </div>
+
                     <div class="form-group">
-                        <label>Bodega:</label>
-                        <select @bind="productoActual.idBodega" class="form-control">
+                        <label><i class="fas fa-cubes"></i> Items</label>
+                        <input type="number" @bind="productoActual.items" class="form-input" />
+                    </div>
+
+                    <!-- Fila 5 -->
+                    <div class="form-group">
+                        <label><i class="fas fa-warehouse"></i> Bodega</label>
+                        <select @bind="productoActual.idBodega" class="form-select">
                             <option value="0">Seleccione una bodega</option>
                             @foreach (var bodega in bodegas.OrderBy(b => b.nombre))
                             {
@@ -158,12 +179,10 @@
                             }
                         </select>
                     </div>
-                </div>
 
-                <div class="form-row">
-                    <div class="form-group full-width">
-                        <label>Proveedor:</label>
-                        <select @bind="productoActual.idProveedor" class="form-control">
+                    <div class="form-group">
+                        <label><i class="fas fa-truck"></i> Proveedor</label>
+                        <select @bind="productoActual.idProveedor" class="form-select">
                             <option value="0">Seleccione un proveedor</option>
                             @foreach (var prov in proveedores.OrderBy(p => p.nombre))
                             {
@@ -173,22 +192,13 @@
                     </div>
                 </div>
 
-                <!-- NUEVOS CAMPOS -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Unidad de Medida:</label>
-                        <input type="text" @bind="productoActual.unidadMedida" />
-                    </div>
-                    <div class="form-group">
-                        <label>Margen de Ganancia (%):</label>
-                        <input type="number" step="0.01" @bind="productoActual.margenGanancia" />
-                    </div>
-                </div>
-
-
                 <div class="form-actions">
-                    <button class="save-btn" @onclick="GuardarProducto">Guardar</button>
-                    <button class="cancel-btn" @onclick="HideForm">Cancelar</button>
+                    <button class="cancel-btn" @onclick="HideForm">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button class="save-btn" @onclick="GuardarProducto">
+                        <i class="fas fa-save"></i> @(productoActual.codigoProducto == 0 ? "AGREGAR" : "GUARDAR CAMBIOS")
+                    </button>
                 </div>
             </div>
         </div>
@@ -880,5 +890,190 @@
         .add-product-form {
             width: 95%;
         }
+    }
+
+
+    /* Estilos para el formulario de producto */
+    .product-form-container {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 700px;
+        max-width: 95%;
+        max-height: 90vh;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+        z-index: 1000;
+        overflow-y: auto;
+    }
+
+    .form-header {
+        padding: 1.2rem 1.5rem;
+        background: linear-gradient(135deg, #D32F2F 0%, #B71C1C 100%);
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-radius: 10px 10px 0 0;
+    }
+
+        .form-header h3 {
+            margin: 0;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+    .close-btn {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 1.3rem;
+        cursor: pointer;
+        padding: 0.3rem;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background-color 0.2s;
+    }
+
+        .close-btn:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+    .form-body {
+        padding: 1.5rem;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.2rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group {
+        margin-bottom: 0;
+    }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+    .form-input, .form-select {
+        width: 100%;
+        padding: 0.6rem 0.8rem;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+        font-size: 0.9rem;
+        transition: all 0.2s;
+    }
+
+        .form-input:focus, .form-select:focus {
+            border-color: #D32F2F;
+            box-shadow: 0 0 0 0.2rem rgba(211, 47, 47, 0.2);
+            outline: none;
+        }
+
+    .select-with-button {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .form-select {
+        flex: 1;
+    }
+
+    .add-category-btn {
+        background-color: #f8f9fa;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+        padding: 0 0.8rem;
+        cursor: pointer;
+        color: #495057;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+    }
+
+        .add-category-btn:hover {
+            background-color: #e9ecef;
+            color: #D32F2F;
+        }
+
+    .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e9ecef;
+        margin-top: 1rem;
+    }
+
+    .save-btn, .cancel-btn {
+        padding: 0.6rem 1.2rem;
+        border-radius: 5px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s;
+    }
+
+    .save-btn {
+        background-color: #28a745;
+        color: white;
+        border: none;
+    }
+
+        .save-btn:hover {
+            background-color: #218838;
+            transform: translateY(-2px);
+        }
+
+    .cancel-btn {
+        background-color: white;
+        color: #495057;
+        border: 1px solid #ced4da;
+    }
+
+        .cancel-btn:hover {
+            background-color: #f8f9fa;
+            transform: translateY(-2px);
+        }
+
+    /* Responsive */
+    @@media (max-width: 768px) {
+        .form-grid
+
+    {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .form-actions {
+        flex-direction: column-reverse;
+    }
+
+    .save-btn, .cancel-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
     }
 </style>

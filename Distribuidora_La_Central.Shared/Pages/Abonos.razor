@@ -1,10 +1,10 @@
 ﻿@page "/Abonos"
+@page "/Abonos/{idCredito}"
 @using System.Net.Http
 @using System.Net.Http.Json
 @inject HttpClient Http
 @inject IJSRuntime JSRuntime
-
-
+@inject NavigationManager Navigation
 
 <h3 class="text-white bg-primary p-3 rounded-top">Gestión de Abonos</h3>
 
@@ -15,7 +15,8 @@
         </button>
 
         <div class="input-group" style="width: 300px;">
-            <input type="text" class="form-control" placeholder="Buscar abonos..." @bind="filtroBusqueda" />
+            <input type="text" class="form-control" placeholder="Buscar abonos..."
+                   @bind="filtroBusqueda" @oninput="BuscarAbonos" />
             <button class="btn btn-outline-primary" @onclick="BuscarAbonos">
                 <i class="fas fa-search"></i>
             </button>
@@ -35,6 +36,7 @@
 
                 <EditForm Model="@nuevoAbono" OnValidSubmit="@RegistrarAbono">
                     <DataAnnotationsValidator />
+                    <ValidationSummary class="alert alert-danger" />
 
                     <div class="form-group mb-3">
                         <label class="text-primary fw-bold">Factura:</label>
@@ -43,7 +45,9 @@
                             @foreach (var factura in facturasPendientes)
                             {
                                 <option value="@factura.codigoFactura">
-                                    Factura #@factura.codigoFactura - Saldo: @factura.saldo.ToString("C")
+                                    Factura #@factura.codigoFactura -
+                                    Cliente: @factura.codigoCliente -
+                                    Saldo: @factura.saldo.ToString("C")
                                 </option>
                             }
                         </InputSelect>
@@ -169,8 +173,8 @@
     private int itemsPorPagina = 10;
     private int totalPaginas = 1;
 
-
-
+    [Parameter]
+    public string IdCredito { get; set; }
 
     public class Factura
     {
@@ -180,14 +184,44 @@
         public decimal totalFactura { get; set; }
         public decimal saldo { get; set; }
         public string tipo { get; set; }
-        public string estado { get; set; }
+        public string estadoCredito { get; set; }
+    }
+
+    public class Abono
+    {
+        public int idAbono { get; set; }
+        public int codigoFactura { get; set; }
+        public int IdCredito { get; set; }
+        public decimal montoAbono { get; set; }
+        public DateTime fechaAbono { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
     {
         await CargarAbonos();
-        await CargarFacturasPendientes();
+        await CargarFacturasConCreditoPendiente();
+
+        if (!string.IsNullOrEmpty(IdCredito))
+        {
+            // Filtrar abonos por crédito si se especificó un IdCredito
+            abonos = abonos.Where(a => a.IdCredito == int.Parse(IdCredito)).ToList();
+            FiltrarAbonos();
+        }
+
         cargando = false;
+    }
+
+    private async Task CargarFacturasConCreditoPendiente()
+    {
+        try
+        {
+            facturasPendientes = await Http.GetFromJsonAsync<List<Factura>>(
+                "/api/Credito/GetFacturasConCreditoActivo");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error al cargar facturas: {ex.Message}");
+        }
     }
 
     private async Task CargarAbonos()
@@ -199,24 +233,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error al cargar abonos: {ex.Message}");
-        }
-    }
-
-
-    private async Task CargarFacturasPendientes()
-    {
-        try
-        {
-            var response = await Http.GetAsync("/api/Factura/GetFacturasPendientes");
-            if (response.IsSuccessStatusCode)
-            {
-                facturasPendientes = await response.Content.ReadFromJsonAsync<List<Factura>>();
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error al cargar facturas pendientes: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error al cargar abonos: {ex.Message}");
         }
     }
 
@@ -254,7 +271,11 @@
 
     private void MostrarFormulario()
     {
-        nuevoAbono = new Abono { fechaAbono = DateTime.Now };
+        nuevoAbono = new Abono
+            {
+                fechaAbono = DateTime.Now,
+                IdCredito = string.IsNullOrEmpty(IdCredito) ? 0 : int.Parse(IdCredito)
+            };
         mostrarForm = true;
     }
 
@@ -277,37 +298,34 @@
 
             if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<dynamic>();
-                // Mostrar mensaje de éxito
-                Console.WriteLine("Abono registrado exitosamente");
-
-                // Recargar datos
+                await JSRuntime.InvokeVoidAsync("alert", "Abono registrado exitosamente");
                 await CargarAbonos();
-                await CargarFacturasPendientes();
+                await CargarFacturasConCreditoPendiente();
                 mostrarForm = false;
             }
             else
             {
                 var error = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"Error: {error}");
-                // Mostrar error al usuario
+                await JSRuntime.InvokeVoidAsync("alert", $"Error: {error}");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error general: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error general: {ex.Message}");
         }
     }
 
     private async Task VerDetalle(int idAbono)
     {
         // Implementar lógica para ver detalles del abono
-        // Podrías hacer una llamada adicional al API si necesitas más información
+        Navigation.NavigateTo($"/DetalleAbono/{idAbono}");
     }
 
     private async Task EliminarAbono(int idAbono)
     {
-        bool confirmar = await JSRuntime.InvokeAsync<bool>("confirm");
+        bool confirmar = await JSRuntime.InvokeAsync<bool>("confirm",
+            new[] { "¿Está seguro que desea eliminar este abono?" });
+
         if (!confirmar) return;
 
         try
@@ -316,32 +334,20 @@
 
             if (response.IsSuccessStatusCode)
             {
-                // Mostrar mensaje de éxito
-                Console.WriteLine("Abono eliminado exitosamente");
                 await CargarAbonos();
+                await JSRuntime.InvokeVoidAsync("alert", "Abono eliminado exitosamente");
             }
             else
             {
                 var error = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"Error: {error}");
-                // Mostrar error al usuario
+                await JSRuntime.InvokeVoidAsync("alert", $"Error: {error}");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error general: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error general: {ex.Message}");
         }
     }
-
-    public class Abono
-    {
-        public int idAbono { get; set; }
-        public int codigoFactura { get; set; }
-        public decimal montoAbono { get; set; }
-        public DateTime fechaAbono { get; set; }
-    }
-
-
 }
 
 <style>

@@ -3,10 +3,11 @@
 @using System.Net.Http.Json
 @inject HttpClient Http
 @inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
 
-<div class="container-fluid px-4">
-    <div class="card mb-4 shadow">
-        <div class="card-header bg-primary text-white">
+<div class="container-fluid px-4 py-3">
+    <div class="card mb-4 border-0 shadow-sm">
+        <div class="card-header bg-primary text-white py-3">
             <div class="d-flex justify-content-between align-items-center">
                 <h3 class="mb-0"><i class="fas fa-credit-card me-2"></i>Gestión de Créditos</h3>
                 <button class="btn btn-light btn-sm" @onclick="MostrarFormulario">
@@ -15,18 +16,19 @@
             </div>
         </div>
 
-        <div class="card-body">
+        <div class="card-body bg-light">
             <!-- Filtros -->
-            <div class="row mb-3">
+            <div class="row mb-4 g-3">
                 <div class="col-md-4">
                     <div class="input-group">
-                        <input type="text" class="form-control" placeholder="Buscar..." @bind="filtroBusqueda" />
-                        <button class="btn btn-outline-primary" @onclick="BuscarCreditos">
-                            <i class="fas fa-search"></i>
+                        <span class="input-group-text bg-white"><i class="fas fa-search"></i></span>
+                        <input type="text" class="form-control border-start-0" placeholder="Buscar..." @bind="filtroBusqueda" />
+                        <button class="btn btn-primary" @onclick="BuscarCreditos">
+                            Buscar
                         </button>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <select class="form-select" @bind="filtroEstado">
                         <option value="">Todos los estados</option>
                         <option value="Activo">Activos</option>
@@ -34,8 +36,16 @@
                         <option value="Pagado">Pagados</option>
                     </select>
                 </div>
-                <div class="col-md-4">
-                    <input type="date" class="form-control" @bind="filtroFecha" />
+                <div class="col-md-3">
+                    <div class="input-group">
+                        <span class="input-group-text bg-white"><i class="far fa-calendar-alt"></i></span>
+                        <input type="date" class="form-control" @bind="filtroFecha" />
+                    </div>
+                </div>
+                <div class="col-md-2 d-flex align-items-center">
+                    <button class="btn btn-outline-secondary w-100" @onclick="ResetearFiltros">
+                        <i class="fas fa-filter-circle-xmark me-1"></i> Limpiar
+                    </button>
                 </div>
             </div>
 
@@ -46,63 +56,75 @@
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Cargando...</span>
                     </div>
-                    <p class="mt-2">Cargando créditos...</p>
+                    <p class="mt-2 text-muted">Cargando créditos...</p>
                 </div>
             }
             else if (!listaCreditos.Any())
             {
-                <div class="alert alert-info text-center">
-                    <i class="fas fa-info-circle me-2"></i> No se encontraron créditos registrados
+                <div class="alert alert-light text-center py-4 border">
+                    <i class="fas fa-info-circle me-2 text-primary"></i> No se encontraron créditos registrados
                 </div>
             }
             else
             {
                 <!-- Tabla de créditos -->
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover table-bordered">
-                        <thead class="table-dark">
+                <div class="table-responsive rounded-3 overflow-hidden">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-primary">
                             <tr>
-                                <th>ID</th>
-                                <th>Factura</th>
+
+                                <th>Codigo Factura</th>
+                                <th>Cliente</th> <!-- Columna para el cliente -->
                                 <th>Fecha Inicio</th>
                                 <th>Fecha Fin</th>
-                                <th>Saldo Máx.</th>
+                                <th class="text-end">Saldo Máx.</th>
                                 <th>Estado</th>
-                                <th>Acciones</th>
+                                <th class="text-end pe-4">Acciones</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody class="bg-white">
                             @foreach (var credito in creditosFiltrados)
                             {
-                                <tr>
-                                    <td>@credito.IdCredito</td>
-                                    <td>@credito.CodigoFactura</td>
-                                    <td>@credito.FechaInicial.ToShortDateString()</td>
-                                    <td class="@(credito.Estado == "Vencido" ? "text-danger fw-bold" : "")">
-                                        @credito.FechaFinal.ToShortDateString()
+                                <tr class="align-middle">
+                                    <td> 
+                                        <div>@credito.codigoFactura</div>
                                     </td>
-                                    <td class="text-end">@credito.SaldoMaximo.ToString("C")</td>
+
                                     <td>
-                                        <span class="badge @GetBadgeClass(credito.Estado)">
+                                        <div>@credito.NombreCliente</div>
+
+                                    </td>
+
+                                    <td>@credito.FechaInicial.ToString("dd/MM/yyyy")</td>
+                                    <td class="@(credito.Estado == "Vencido" ? "text-danger fw-bold" : "")">
+                                        @credito.FechaFinal.ToString("dd/MM/yyyy")
+                                    </td>
+                                    <td class="text-end">@credito.SaldoMaximo.ToString("C2")</td>
+                                    <td>
+                                        <span class="badge @GetBadgeClass(credito.Estado) rounded-pill px-3 py-2">
                                             @credito.Estado
                                         </span>
                                     </td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-primary me-1"
-                                                @onclick="() => VerDetalles(credito.IdCredito)"
-                                                title="Ver detalles">
-                                            <i class="fas fa-eye"></i>
-                                        </button>
-                                        <button class="btn btn-sm btn-outline-warning me-1"
-                                                @onclick="() => EditarCredito(credito.IdCredito)"
-                                                title="Editar">
-                                            <i class="fas fa-edit"></i>
-                                        </button>
-                                        <button class="btn btn-sm btn-outline-danger"
-                                                @onclick="() => EliminarCredito(credito.IdCredito)"
-                                                title="Eliminar">
-                                            <i class="fas fa-trash-alt"></i>
-                                        </button>
+                                    <td class="text-end pe-4">
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <!-- Botón de Abono que abre el modal -->
+                                            <button class="btn btn-outline-success"
+                                            @onclick="() => VerAbonos(credito.IdCredito, credito.codigoFactura)"
+                                            title="Registrar abono">
+                                                <i class="fas fa-money-bill-wave"></i> Abono
+                                            </button>
+                                            <!-- Botón de Editar -->
+                                            <button class="btn btn-outline-primary" @onclick="() => EditarCredito(credito.IdCredito)"
+                                            title="Editar crédito">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+
+                                            <!-- Botón de Eliminar -->
+                                            <button class="btn btn-outline-danger" @onclick="() => EliminarCredito(credito.IdCredito)"
+                                            title="Eliminar crédito">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             }
@@ -110,29 +132,91 @@
                     </table>
                 </div>
 
+
+                <!-- Modal para abonos -->
+                @if (mostrarModalAbono)
+                {
+                    <div class="modal-backdrop fade show" style="z-index: 1050; background-color: rgba(0,0,0,0.5);"></div>
+                    <div class="modal fade show d-block" style="z-index: 1060;" tabindex="-1">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content border-0 shadow-lg">
+                                <div class="modal-header bg-success text-white py-3">
+                                    <h5 class="modal-title">
+                                        <i class="fas fa-money-bill-wave me-2"></i>
+                                        Registrar Abono para Crédito #@creditoSeleccionado.IdCredito
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalAbono"></button>
+                                </div>
+
+                                <EditForm Model="@nuevoAbono" OnValidSubmit="@RegistrarAbono">
+                                    <DataAnnotationsValidator />
+                                    <ValidationSummary class="alert alert-danger" />
+
+                                    <div class="modal-body py-4">
+                                        <div class="row g-3">
+                                            <div class="col-md-12">
+                                                <label class="form-label text-muted small mb-1">Factura Asociada</label>
+                                                <p class="form-control-plaintext">@creditoSeleccionado.codigoFactura</p>
+
+
+                                            </div>
+
+                                            <div class="col-md-12">
+                                                <label class="form-label text-muted small mb-1">Monto del Abono</label>
+                                                <div class="input-group">
+                                                    <span class="input-group-text">$</span>
+                                                    <InputNumber @bind-Value="nuevoAbono.montoAbono" class="form-control"
+                                                    step="0.01" min="0.01" max="@creditoSeleccionado.SaldoMaximo" />
+                                                </div>
+                                                <small class="text-muted">Saldo máximo: @creditoSeleccionado.SaldoMaximo.ToString("C")</small>
+                                                <ValidationMessage For="@(() => nuevoAbono.montoAbono)" />
+                                            </div>
+
+                                            <div class="col-md-12">
+                                                <label class="form-label text-muted small mb-1">Fecha del Abono</label>
+                                                <InputDate @bind-Value="nuevoAbono.fechaAbono" class="form-control" />
+                                                <ValidationMessage For="@(() => nuevoAbono.fechaAbono)" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="modal-footer border-0 pt-0">
+                                        <button type="button" class="btn btn-outline-secondary" @onclick="CerrarModalAbono">
+                                            <i class="fas fa-times me-1"></i> Cancelar
+                                        </button>
+                                        <button type="submit" class="btn btn-success">
+                                            <i class="fas fa-save me-1"></i> Registrar Abono
+                                        </button>
+                                    </div>
+                                </EditForm>
+                            </div>
+                        </div>
+                    </div>
+                }
+
                 <!-- Paginación -->
-                <div class="d-flex justify-content-between align-items-center mt-3">
+                <div class="d-flex justify-content-between align-items-center mt-4 px-2">
                     <div>
-                        <span class="text-muted">
+                        <span class="text-muted small">
                             Mostrando @((paginaActual - 1) * itemsPorPagina + 1) a
                             @Math.Min(paginaActual * itemsPorPagina, creditosFiltrados.Count) de
                             @creditosFiltrados.Count créditos
                         </span>
                     </div>
-                    <div class="btn-group">
-                        <button class="btn btn-outline-primary @(paginaActual == 1 ? "disabled" : "")"
-                                @onclick="() => CambiarPagina(paginaActual - 1)">
+                    <div class="btn-group shadow-sm">
+                        <button class="btn btn-light @(paginaActual == 1 ? "disabled" : "") border"
+                        @onclick="() => CambiarPagina(paginaActual - 1)">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         @for (int i = 1; i <= totalPaginas; i++)
                         {
-                            <button class="btn @(i == paginaActual ? "btn-primary" : "btn-outline-primary")"
-                                    @onclick="() => CambiarPagina(i)">
+                            <button class="btn @(i == paginaActual ? "btn-primary" : "btn-light border")"
+                            @onclick="() => CambiarPagina(i)">
                                 @i
                             </button>
                         }
-                        <button class="btn btn-outline-primary @(paginaActual == totalPaginas ? "disabled" : "")"
-                                @onclick="() => CambiarPagina(paginaActual + 1)">
+                        <button class="btn btn-light @(paginaActual == totalPaginas ? "disabled" : "") border"
+                        @onclick="() => CambiarPagina(paginaActual + 1)">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                     </div>
@@ -145,12 +229,13 @@
 <!-- Modal para formulario -->
 @if (mostrarModal)
 {
-    <div class="modal-backdrop fade show" style="z-index: 1050;"></div>
+    <div class="modal-backdrop fade show" style="z-index: 1050; background-color: rgba(0,0,0,0.5);"></div>
     <div class="modal fade show d-block" style="z-index: 1060;" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white py-3">
                     <h5 class="modal-title">
+                        <i class="fas @(creditoSeleccionado.IdCredito == 0 ? "fa-plus-circle" : "fa-edit") me-2"></i>
                         @(creditoSeleccionado.IdCredito == 0 ? "Nuevo Crédito" : "Editar Crédito")
                     </h5>
                     <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
@@ -158,39 +243,71 @@
 
                 <EditForm Model="@creditoSeleccionado" OnValidSubmit="@GuardarCredito">
                     <DataAnnotationsValidator />
-                    <ValidationSummary />
+                    <ValidationSummary class="alert alert-danger" />
 
-                    <div class="modal-body">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Factura asociada</label>
-                                <InputNumber @bind-Value="creditoSeleccionado.CodigoFactura" class="form-control" />
-                                <ValidationMessage For="@(() => creditoSeleccionado.CodigoFactura)" />
+                    <div class="modal-body py-4">
+                        <div class="row g-3">
+                            <div class="form-group mb-3">
+                                <label class="text-primary fw-bold">Factura:</label>
+                                <InputSelect @bind-Value="creditoSeleccionado.codigoFactura" class="form-select">
+                                    <option value="">Seleccione una factura</option>
+                                    @if (facturasPendientes != null && facturasPendientes.Any())
+                                    {
+                                        @foreach (var factura in facturasPendientes)
+                                        {
+                                            // Buscar el crédito asociado a esta factura (si existe)
+                                            var creditoAsociado = listaCreditos.FirstOrDefault(c => c.codigoFactura == factura.codigoFactura);
+
+                                            <option value="@factura.codigoFactura">
+                                                Factura #@factura.codigoFactura -
+                                                Cliente: @factura.codigoCliente
+                                                @if (creditoAsociado != null)
+                                                {
+                                                    <text> - Crédito: @creditoAsociado.Estado</text>
+                                                }
+                                            </option>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <option value="" disabled>No hay facturas disponibles</option>
+                                    }
+                                </InputSelect>
+                                <ValidationMessage For="@(() => creditoSeleccionado.codigoFactura)" />
                             </div>
 
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Saldo Máximo</label>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small mb-1">Saldo Máximo</label>
                                 <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <InputNumber @bind-Value="creditoSeleccionado.SaldoMaximo" class="form-control" step="0.01" />
+                                    <span class="input-group-text bg-light">$</span>
+                                    <InputNumber @bind-Value="creditoSeleccionado.SaldoMaximo"
+                                    class="form-control border-start-0" step="0.01" />
                                 </div>
-                                <ValidationMessage For="@(() => creditoSeleccionado.SaldoMaximo)" />
+                                <ValidationMessage For="@(() => creditoSeleccionado.SaldoMaximo)" class="text-danger small" />
                             </div>
 
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Fecha Inicial</label>
-                                <InputDate @bind-Value="creditoSeleccionado.FechaInicial" class="form-control" />
-                                <ValidationMessage For="@(() => creditoSeleccionado.FechaInicial)" />
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small mb-1">Fecha Inicial</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light"><i class="far fa-calendar-alt"></i></span>
+                                    <InputDate @bind-Value="creditoSeleccionado.FechaInicial"
+                                    class="form-control border-start-0" />
+                                </div>
+                                <ValidationMessage For="@(() => creditoSeleccionado.FechaInicial)" class="text-danger small" />
                             </div>
 
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Fecha Final</label>
-                                <InputDate @bind-Value="creditoSeleccionado.FechaFinal" class="form-control" />
-                                <ValidationMessage For="@(() => creditoSeleccionado.FechaFinal)" />
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small mb-1">Fecha Final</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light"><i class="far fa-calendar-alt"></i></span>
+                                    <InputDate @bind-Value="creditoSeleccionado.FechaFinal"
+                                    class="form-control border-start-0" />
+                                </div>
+                                <ValidationMessage For="@(() => creditoSeleccionado.FechaFinal)" class="text-danger small" />
                             </div>
 
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Estado</label>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small mb-1">Estado</label>
                                 <InputSelect @bind-Value="creditoSeleccionado.Estado" class="form-select">
                                     <option value="Activo">Activo</option>
                                     <option value="Vencido">Vencido</option>
@@ -200,9 +317,9 @@
                         </div>
                     </div>
 
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" @onclick="CerrarModal">
-                            Cancelar
+                    <div class="modal-footer border-0 pt-0">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CerrarModal">
+                            <i class="fas fa-times me-1"></i> Cancelar
                         </button>
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-save me-1"></i> Guardar
@@ -214,20 +331,142 @@
     </div>
 }
 
+
 @code {
+
+
+    private void MostrarModalAbono(CreditoModel credito)
+    {
+        Console.WriteLine($"Factura seleccionada: {credito.codigoFactura}");
+        creditoSeleccionado = credito;
+        nuevoAbono = new Abono
+            {
+                fechaAbono = DateTime.Now,
+                codigoFactura = credito.codigoFactura
+            };
+        mostrarModalAbono = true;
+        CargarAbonosDelCredito(credito.IdCredito);
+    }
+
+
+
+    private void CerrarModalAbono()
+    {
+        mostrarModalAbono = false;
+    }
+
+    private bool mostrarModalAbono = false;
+    private Abono nuevoAbono = new Abono { fechaAbono = DateTime.Now };
+    private List<Abono> abonosDelCredito = new List<Abono>();
+
+
+
+    private void VerAbonos(int idCredito, int codigoFactura)
+    {
+        var credito = listaCreditos.FirstOrDefault(c => c.IdCredito == idCredito);
+        if (credito != null)
+        {
+            MostrarModalAbono(credito);
+        }
+    }
+    public class CreditoClienteView
+
+
+    {
+
+        public int idCredito { get; set; }
+        public int codigoCliente { get; set; }
+        public int codigoFactura { get; set; }
+        public string nombreCliente { get; set; }
+        public decimal saldoActual { get; set; }
+        public DateTime fechaVencimiento { get; set; }
+        public string estado { get; set; }
+    }
+
     // Modelo
     public class CreditoModel
     {
         public int IdCredito { get; set; }
-        public int CodigoFactura { get; set; }
+        public int codigoFactura { get; set; }
+        public int CodigoCliente { get; set; }
+        public string NombreCliente { get; set; }
         public DateTime FechaInicial { get; set; } = DateTime.Now;
         public DateTime FechaFinal { get; set; } = DateTime.Now.AddMonths(1);
         public decimal SaldoMaximo { get; set; }
         public string Estado { get; set; } = "Activo";
     }
 
+    public class Factura
+    {
+        public int codigoFactura { get; set; }
+        public int codigoCliente { get; set; }
+        public DateTime fecha { get; set; }
+        public decimal totalFactura { get; set; }
+        public decimal saldo { get; set; }
+        public string tipo { get; set; }
+        public string estadoCredito { get; set; } // Nuevo campo
+    }
+
     // Variables de estado
+    public class Abono
+    {
+        public int idAbono { get; set; }
+        public int codigoFactura { get; set; }
+        public int IdCredito { get; set; } // Nueva propiedad para relacionar con crédito
+        public decimal montoAbono { get; set; }
+        public DateTime fechaAbono { get; set; }
+    }
+    private async Task CargarAbonosDelCredito(int idCredito)
+    {
+        try
+        {
+            // Primero obtenemos el código de factura del crédito
+            var credito = listaCreditos.FirstOrDefault(c => c.IdCredito == idCredito);
+            if (credito != null)
+            {
+                // Luego obtenemos los abonos para esa factura
+                abonosDelCredito = await Http.GetFromJsonAsync<List<Abono>>($"/api/Abono/GetByFactura/{credito.codigoFactura}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error al cargar abonos: {ex.Message}");
+        }
+    }
+
+    private async Task RegistrarAbono()
+    {
+        try
+        {
+            nuevoAbono.codigoFactura = creditoSeleccionado.codigoFactura;
+
+            var response = await Http.PostAsJsonAsync("/api/Abono/Registrar", nuevoAbono);
+
+            if (response.IsSuccessStatusCode)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Abono registrado exitosamente!");
+                await CargarAbonosDelCredito(creditoSeleccionado.IdCredito);
+                await CargarCreditos(); // Actualizar la lista de créditos
+                CerrarModalAbono();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                await JSRuntime.InvokeVoidAsync("alert", $"Error: {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al registrar abono: {ex.Message}");
+        }
+    }
+
+  
+
+  
+    private List<Factura> facturasPendientes = new List<Factura>();
     private List<CreditoModel> listaCreditos = new List<CreditoModel>();
+    private List<CreditoClienteView> listaClientes = new List<CreditoClienteView>();
     private List<CreditoModel> creditosFiltrados = new List<CreditoModel>();
     private CreditoModel creditoSeleccionado = new CreditoModel();
     private bool cargando = true;
@@ -239,11 +478,67 @@
     private int itemsPorPagina = 10;
     private int totalPaginas = 1;
 
+
+  
+
     // Inicialización
     protected override async Task OnInitializedAsync()
     {
+
         await CargarCreditos();
+        CargarFacturasConCreditoPendiente();
+        Console.WriteLine($"Créditos cargados: {listaCreditos.Count}");
+
+        // Verifica los primeros 5 créditos
+        foreach (var credito in listaCreditos.Take(5))
+        {
+            Console.WriteLine($"Crédito ID: {credito.IdCredito} - Cliente ID: {credito.CodigoCliente} - Nombre: {credito.NombreCliente}");
+        }
+
         cargando = false;
+    }
+
+
+
+    private async Task CargarFacturasConCreditoPendiente()
+    {
+        try
+        {
+            facturasPendientes = await Http.GetFromJsonAsync<List<Factura>>(
+                "/api/Credito/GetFacturasConCreditoActivo");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar facturas con crédito pendiente: {ex.Message}");
+        }
+    }
+
+
+
+    private void ResetearFiltros()
+    {
+        filtroBusqueda = "";
+        filtroEstado = "";
+        filtroFecha = null;
+        BuscarCreditos();
+    }
+
+    // Clases CSS para badges
+    private string GetBadgeClass(string estado)
+    {
+        return estado switch
+        {
+            "Activo" => "bg-success",
+            "Vencido" => "bg-danger",
+            "Pagado" => "bg-secondary",
+            _ => "bg-warning text-dark"
+        };
+    }
+
+    // Método para redirigir a la página de abonos
+    private void VerAbonos(int idCredito)
+    {
+        Navigation.NavigateTo($"/Abonos?idCredito={idCredito}");
     }
 
     // Cargar créditos desde la API
@@ -251,18 +546,31 @@
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<List<CreditoModel>>("/api/Credito/GetAllCreditos");
+            var response = await Http.GetFromJsonAsync<List<CreditoClienteView>>("/api/Credito/GetCreditosPorCliente");
             if (response != null)
             {
-                listaCreditos = response;
+                listaCreditos = response.Select(c => new CreditoModel
+                    {
+                        IdCredito = c.idCredito,
+                        CodigoCliente = c.codigoCliente,
+                        NombreCliente = c.nombreCliente,
+                        SaldoMaximo = c.saldoActual,
+                        FechaFinal = c.fechaVencimiento,
+                        Estado = c.estado,
+                    // Asigna otros campos necesarios o valores por defecto
+                        codigoFactura = c.codigoFactura, // O el valor apropiado
+                        FechaInicial = DateTime.Now // O el valor apropiado
+                    }).ToList();
+
                 FiltrarCreditos();
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error al cargar créditos: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error al cargar créditos: {ex.Message}");
         }
     }
+
 
     // Filtrar créditos
     private void FiltrarCreditos()
@@ -273,7 +581,7 @@
         {
             query = query.Where(c =>
                 c.IdCredito.ToString().Contains(filtroBusqueda) ||
-                c.CodigoFactura.ToString().Contains(filtroBusqueda) ||
+                c.codigoFactura.ToString().Contains(filtroBusqueda) ||
                 c.Estado.Contains(filtroBusqueda));
         }
 
@@ -403,15 +711,71 @@
         mostrarModal = false;
     }
 
+
+    
     // Clases CSS para badges
-    private string GetBadgeClass(string estado)
-    {
-        return estado switch
-        {
-            "Activo" => "bg-success",
-            "Vencido" => "bg-danger",
-            "Pagado" => "bg-secondary",
-            _ => "bg-warning"
-        };
-    }
+  
 }
+
+
+
+<style>
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background-color: white;
+        animation: modalFadeIn 0.3s;
+    }
+
+    @@keyframes modalFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .table-primary {
+        background-color: #0d6efd;
+        color: white;
+    }
+
+    .btn-outline-primary {
+        border-color: #0d6efd;
+        color: #0d6efd;
+    }
+
+        .btn-outline-primary:hover {
+            background-color: #0d6efd;
+            color: white;
+        }
+
+    .modal-abono .modal-content {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .table-sm td, .table-sm th {
+        padding: 0.3rem;
+    }
+
+    .btn-group-sm > .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+</style>

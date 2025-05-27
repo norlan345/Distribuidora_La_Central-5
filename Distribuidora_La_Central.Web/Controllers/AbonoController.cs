@@ -65,42 +65,67 @@ namespace Distribuidora_La_Central.Web.Controllers
                 {
                     try
                     {
-                        // 1. Obtener información actual de la factura
-                        SqlCommand cmdGetFactura = new SqlCommand(
-                            "SELECT saldo FROM Factura WHERE codigoFactura = @codigoFactura",
+                        // 1. Verificar que existe el crédito asociado a la factura
+                        SqlCommand cmdGetCredito = new SqlCommand(
+                            @"SELECT saldoMaximo, estado FROM Credito 
+                      WHERE codigoFactura = @codigoFactura",
                             con, transaction);
-                        cmdGetFactura.Parameters.AddWithValue("@codigoFactura", abono.codigoFactura);
+                        cmdGetCredito.Parameters.AddWithValue("@codigoFactura", abono.codigoFactura);
 
-                        decimal saldoActual = (decimal)cmdGetFactura.ExecuteScalar();
+                        decimal saldoActual = 0;
+                        string estadoActual = "";
 
-                        // 2. Validar el monto del abono
+                        using (var reader = cmdGetCredito.ExecuteReader())
+                        {
+                            if (!reader.Read())
+                            {
+                                transaction.Rollback();
+                                return BadRequest("No se encontró crédito asociado a esta factura");
+                            }
+
+                            saldoActual = reader.GetDecimal(0);
+                            estadoActual = reader.GetString(1);
+                        }
+
+                        // 2. Validaciones
+                        if (estadoActual != "Activo")
+                        {
+                            transaction.Rollback();
+                            return BadRequest("El crédito asociado no está activo");
+                        }
+
                         if (abono.montoAbono > saldoActual)
                         {
                             transaction.Rollback();
-                            return BadRequest("El monto del abono excede el saldo pendiente");
+                            return BadRequest("El monto del abono excede el saldo disponible");
                         }
 
                         // 3. Registrar el abono
                         SqlCommand cmdInsertAbono = new SqlCommand(
                             @"INSERT INTO Abono (codigoFactura, montoAbono, fechaAbono) 
-                      VALUES (@codigoFactura, @montoAbono, @fechaAbono)",
+                      VALUES (@codigoFactura, @montoAbono, @fechaAbono);
+                      SELECT SCOPE_IDENTITY();", // Para obtener el ID generado
                             con, transaction);
                         cmdInsertAbono.Parameters.AddWithValue("@codigoFactura", abono.codigoFactura);
                         cmdInsertAbono.Parameters.AddWithValue("@montoAbono", abono.montoAbono);
                         cmdInsertAbono.Parameters.AddWithValue("@fechaAbono", abono.fechaAbono);
-                        cmdInsertAbono.ExecuteNonQuery();
 
-                        // 4. Actualizar el saldo de la factura
+                        int idAbono = Convert.ToInt32(cmdInsertAbono.ExecuteScalar());
+
+                       
                         decimal nuevoSaldo = saldoActual - abono.montoAbono;
-                        string nuevoEstado = nuevoSaldo <= 0 ? "Pagado" : "Pendiente";
+                        string nuevoEstado = nuevoSaldo <= 0 ? "Pagado" : "Activo";
 
-                        SqlCommand cmdUpdateFactura = new SqlCommand(
-                            "UPDATE Factura SET saldo = @saldo, estado = @estado WHERE codigoFactura = @codigoFactura",
+                        SqlCommand cmdUpdateCredito = new SqlCommand(
+                            @"UPDATE Credito 
+                      SET saldoMaximo = @nuevoSaldo,
+                          estado = @nuevoEstado
+                      WHERE codigoFactura = @codigoFactura",
                             con, transaction);
-                        cmdUpdateFactura.Parameters.AddWithValue("@saldo", nuevoSaldo);
-                        cmdUpdateFactura.Parameters.AddWithValue("@estado", nuevoEstado);
-                        cmdUpdateFactura.Parameters.AddWithValue("@codigoFactura", abono.codigoFactura);
-                        cmdUpdateFactura.ExecuteNonQuery();
+                        cmdUpdateCredito.Parameters.AddWithValue("@nuevoSaldo", nuevoSaldo);
+                        cmdUpdateCredito.Parameters.AddWithValue("@nuevoEstado", nuevoEstado);
+                        cmdUpdateCredito.Parameters.AddWithValue("@codigoFactura", abono.codigoFactura);
+                        cmdUpdateCredito.ExecuteNonQuery();
 
                         transaction.Commit();
 
@@ -108,6 +133,7 @@ namespace Distribuidora_La_Central.Web.Controllers
                         {
                             success = true,
                             message = "Abono registrado exitosamente",
+                            idAbono,
                             nuevoSaldo,
                             nuevoEstado
                         });
@@ -117,23 +143,127 @@ namespace Distribuidora_La_Central.Web.Controllers
                         transaction.Rollback();
                         return StatusCode(500, $"Error al registrar el abono: {ex.Message}");
                     }
-                
-                
-                
-                
-                
                 }
-           
-            
-            
             }
-        
-        
-        
-        
-        
-        
         }
+        [HttpGet("GetByFactura/{codigoFactura}")]
+        public string GetAbonosPorFactura(int codigoFactura)
+        {
+            SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            SqlDataAdapter da = new SqlDataAdapter(
+                "SELECT * FROM Abono WHERE codigoFactura = @codigoFactura",
+                con);
+            da.SelectCommand.Parameters.AddWithValue("@codigoFactura", codigoFactura);
+
+            DataTable dt = new DataTable();
+            da.Fill(dt);
+
+            List<Abono> abonoList = new List<Abono>();
+
+            if (dt.Rows.Count > 0)
+            {
+                foreach (DataRow row in dt.Rows)
+                {
+                    Abono abono = new Abono
+                    {
+                        idAbono = Convert.ToInt32(row["idAbono"]),
+                        codigoFactura = Convert.ToInt32(row["codigoFactura"]),
+                        montoAbono = Convert.ToDecimal(row["montoAbono"]),
+                        fechaAbono = Convert.ToDateTime(row["fechaAbono"])
+                    };
+                    abonoList.Add(abono);
+                }
+            }
+
+            return JsonConvert.SerializeObject(abonoList);
+        }
+
+        [HttpPost("Registrar")]
+        public IActionResult RegistrarNuevoAbono([FromBody] Abono abono)
+        {
+            using (SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection")))
+            {
+                con.Open();
+                using (SqlTransaction transaccion = con.BeginTransaction())
+                {
+                    try
+                    {
+                        // 1. Verificar crédito asociado
+                        var cmdVerificarCredito = new SqlCommand(
+                            @"SELECT saldoMaximo, estado FROM Credito 
+                              WHERE codigoFactura = @codigoFactura",
+                            con, transaccion);
+                        cmdVerificarCredito.Parameters.AddWithValue("@codigoFactura", abono.codigoFactura);
+
+                        using (var lector = cmdVerificarCredito.ExecuteReader())
+                        {
+                            if (!lector.Read())
+                            {
+                                transaccion.Rollback();
+                                return BadRequest("No existe crédito asociado a esta factura");
+                            }
+
+                            decimal saldoActual = lector.GetDecimal(0);
+                            string estadoActual = lector.GetString(1);
+                            lector.Close();
+
+                            // 2. Validaciones
+                            if (estadoActual != "Activo")
+                                return BadRequest("El crédito no está activo");
+
+                            if (abono.montoAbono > saldoActual)
+                                return BadRequest("Monto excede el saldo disponible");
+
+                            // 3. Registrar abono
+                            var cmdRegistrarAbono = new SqlCommand(
+                                @"INSERT INTO Abono (codigoFactura, montoAbono, fechaAbono) 
+                                  VALUES (@codigoFactura, @montoAbono, @fechaAbono);
+                                  SELECT SCOPE_IDENTITY();",
+                                con, transaccion);
+
+                            cmdRegistrarAbono.Parameters.AddWithValue("@codigoFactura", abono.codigoFactura);
+                            cmdRegistrarAbono.Parameters.AddWithValue("@montoAbono", abono.montoAbono);
+                            cmdRegistrarAbono.Parameters.AddWithValue("@fechaAbono", abono.fechaAbono);
+
+                            int idAbono = Convert.ToInt32(cmdRegistrarAbono.ExecuteScalar());
+
+                            // 4. Actualizar crédito
+                            decimal nuevoSaldo = saldoActual - abono.montoAbono;
+                            string nuevoEstado = nuevoSaldo <= 0 ? "Pagado" : "Activo";
+
+                            var cmdActualizarCredito = new SqlCommand(
+                                @"UPDATE Credito 
+                                  SET saldoMaximo = @nuevoSaldo,
+                                      estado = @nuevoEstado
+                                  WHERE codigoFactura = @codigoFactura",
+                                con, transaccion);
+
+                            cmdActualizarCredito.Parameters.AddWithValue("@nuevoSaldo", nuevoSaldo);
+                            cmdActualizarCredito.Parameters.AddWithValue("@nuevoEstado", nuevoEstado);
+                            cmdActualizarCredito.Parameters.AddWithValue("@codigoFactura", abono.codigoFactura);
+                            cmdActualizarCredito.ExecuteNonQuery();
+
+                            transaccion.Commit();
+
+                            return Ok(new
+                            {
+                                Exito = true,
+                                Mensaje = "Abono registrado correctamente",
+                                IdAbono = idAbono,
+                                NuevoSaldo = nuevoSaldo,
+                                EstadoActual = nuevoEstado
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        transaccion.Rollback();
+                        return StatusCode(500, $"Error al procesar el abono: {ex.Message}");
+                    }
+                }
+            }
+        }
+
 
 
         [HttpPut("actualizar-abono/{idAbono}")]
