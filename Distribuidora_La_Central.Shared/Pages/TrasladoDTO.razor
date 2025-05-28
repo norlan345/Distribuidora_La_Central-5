@@ -2,9 +2,10 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 @using Distribuidora_La_Central.Shared.Models
-@using System.ComponentModel.DataAnnotations
+@using System.Text.Json
 
 <style>
+    /* [Mantener todos los estilos igual] */
     :root {
         --primary-blue: #1a4b8c;
         --secondary-blue: #2a6fd6;
@@ -16,28 +17,48 @@
         --light-gray: #f8f9fa;
     }
 
+    .card-custom {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+
     .card-header-custom {
         background: linear-gradient(135deg, var(--primary-blue) 0%, var(--secondary-blue) 100%);
         color: white;
-        border-radius: 0.35rem 0.35rem 0 0 !important;
+        border-radius: 10px 10px 0 0 !important;
+        padding: 1.5rem;
     }
 
     .btn-primary-custom {
-        background: var(--secondary-blue);
+        background-color: var(--secondary-blue);
         border: none;
-        color: white;
-        transition: all 0.3s;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        padding: 10px 25px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        transition: all 0.3s ease;
     }
 
         .btn-primary-custom:hover {
-            background: var(--primary-blue);
+            background-color: var(--primary-blue);
             transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+    .form-control-custom {
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 10px 15px;
+        transition: all 0.3s ease;
+    }
+
+        .form-control-custom:focus {
+            border-color: var(--secondary-blue);
+            box-shadow: 0 0 0 0.2rem rgba(42, 111, 214, 0.25);
         }
 
     .table-custom {
-        border-radius: 0.35rem;
+        border-radius: 10px;
         overflow: hidden;
         box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.1);
     }
@@ -52,9 +73,10 @@
         }
 
     .status-badge {
-        padding: 0.35em 0.65em;
-        border-radius: 50rem;
-        font-weight: 600;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-weight: 500;
+        font-size: 0.8rem;
     }
 
     .status-pendiente {
@@ -67,19 +89,16 @@
         color: white;
     }
 
-    .form-control-custom {
-        border: 1px solid #ced4da;
-        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    .status-cancelado {
+        background-color: #dc3545;
+        color: white;
     }
 
-        .form-control-custom:focus {
-            border-color: var(--secondary-blue);
-            box-shadow: 0 0 0 0.2rem rgba(42, 111, 214, 0.25);
-        }
-
-    .validation-message {
-        color: #dc3545;
-        font-size: 0.875em;
+    .section-title {
+        color: var(--primary-blue);
+        border-bottom: 2px solid var(--light-blue);
+        padding-bottom: 10px;
+        margin-bottom: 20px;
     }
 
     .loading-container {
@@ -96,223 +115,197 @@
     }
 </style>
 
-<div class="container-fluid px-4 mt-4">
-    <div class="card border-0 shadow-lg">
-        <div class="card-header card-header-custom py-3">
+<div class="container-fluid px-4 py-4">
+    <div class="card card-custom">
+        <div class="card-header card-header-custom">
             <div class="d-flex justify-content-between align-items-center">
-                <h3 class="m-0 font-weight-bold">
+                <h3 class="m-0 text-white">
                     <i class="fas fa-truck-moving mr-2"></i>Gestión de Traslados
                 </h3>
-                <span class="badge badge-light">v2.0</span>
+                <span class="badge bg-white text-primary">v2.0</span>
             </div>
         </div>
 
         <div class="card-body bg-white">
             <!-- Formulario -->
-            <div class="row mb-5">
-                <div class="col-lg-8 mx-auto">
-                    <div class="card border-0 shadow-sm">
-                        <div class="card-header card-header-custom py-2">
-                            <h6 class="m-0 font-weight-bold">
-                                <i class="fas fa-plus-circle mr-2"></i>Registrar Nuevo Traslado
-                            </h6>
+            <div class="mb-5">
+                <h4 class="section-title">Registrar Nuevo Traslado</h4>
+                <EditForm Model="@nuevoTraslado" OnValidSubmit="@RegistrarTraslado">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="alert alert-danger" />
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Producto</label>
+                            <select class="form-control form-control-custom" @onchange="ProductoSeleccionado">
+                                <option value="">-- Seleccione un producto --</option>
+                                @if (productos != null && productos.Any())
+                                {
+                                    @foreach (var prod in productos)
+                                    {
+                                        <option value="@prod.codigoProducto">@prod.descripcion</option>
+                                    }
+                                }
+                            </select>
                         </div>
-                        <div class="card-body bg-white">
-                            <EditForm Model="@nuevoTraslado" OnValidSubmit="@RegistrarTraslado">
-                                <DataAnnotationsValidator />
-                                <ValidationSummary class="alert alert-danger" />
 
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="form-group mb-4">
-                                            <label class="font-weight-bold text-dark">
-                                                <i class="fas fa-barcode mr-2"></i>Código Producto
-                                            </label>
-                                            <InputNumber class="form-control form-control-custom" @bind-Value="nuevoTraslado.codigoProducto" />
-                                            <ValidationMessage For="@(() => nuevoTraslado.codigoProducto)" class="validation-message" />
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="form-group mb-4">
-                                            <label class="font-weight-bold text-dark">
-                                                <i class="fas fa-boxes mr-2"></i>Cantidad
-                                            </label>
-                                            <InputNumber class="form-control form-control-custom" @bind-Value="nuevoTraslado.cantidad" />
-                                            <ValidationMessage For="@(() => nuevoTraslado.cantidad)" class="validation-message" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="form-group mb-4">
-                                            <label class="font-weight-bold text-dark">
-                                                <i class="fas fa-warehouse mr-2"></i>Bodega Origen
-                                            </label>
-                                            <InputNumber class="form-control form-control-custom" @bind-Value="nuevoTraslado.idBodegaOrigen" />
-                                            <ValidationMessage For="@(() => nuevoTraslado.idBodegaOrigen)" class="validation-message" />
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="form-group mb-4">
-                                            <label class="font-weight-bold text-dark">
-                                                <i class="fas fa-warehouse mr-2"></i>Bodega Destino
-                                            </label>
-                                            <InputNumber class="form-control form-control-custom" @bind-Value="nuevoTraslado.idBodegaDestino" />
-                                            <ValidationMessage For="@(() => nuevoTraslado.idBodegaDestino)" class="validation-message" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="form-group mb-4">
-                                            <label class="font-weight-bold text-dark">
-                                                <i class="fas fa-calendar-alt mr-2"></i>Fecha Traslado
-                                            </label>
-                                            <InputDate class="form-control form-control-custom" @bind-Value="nuevoTraslado.fechaTraslado" />
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="form-group mb-4">
-                                            <label class="font-weight-bold text-dark">
-                                                <i class="fas fa-user mr-2"></i>Realizado Por (ID)
-                                            </label>
-                                            <InputNumber class="form-control form-control-custom" @bind-Value="nuevoTraslado.realizadoPor" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="form-group mb-4">
-                                    <label class="font-weight-bold text-dark">
-                                        <i class="fas fa-info-circle mr-2"></i>Estado
-                                    </label>
-                                    <InputSelect class="form-control form-control-custom" @bind-Value="nuevoTraslado.estado">
-                                        <option value="Pendiente">Pendiente</option>
-                                        <option value="En progreso">En progreso</option>
-                                        <option value="Completado">Completado</option>
-                                        <option value="Cancelado">Cancelado</option>
-                                    </InputSelect>
-                                </div>
-
-                                <div class="d-flex justify-content-between mt-4">
-                                    <button type="button" class="btn btn-outline-secondary" @onclick="() => nuevoTraslado = new TrasladoDto()">
-                                        <i class="fas fa-eraser mr-2"></i>Limpiar
-                                    </button>
-                                    <button type="submit" class="btn btn-primary-custom px-4">
-                                        <i class="fas fa-save mr-2"></i>Registrar Traslado
-                                    </button>
-                                </div>
-                            </EditForm>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Cantidad</label>
+                            <InputNumber class="form-control form-control-custom" @bind-Value="nuevoTraslado.cantidad" />
                         </div>
                     </div>
-                </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Bodega Origen</label>
+                            <select class="form-control form-control-custom" @bind="nuevoTraslado.idBodegaOrigen">
+                                <option value="">-- Seleccione la bodega de origen --</option>
+                                @if (bodegas != null && bodegas.Any())
+                                {
+                                    @foreach (var bodega in bodegas)
+                                    {
+                                        <option value="@bodega.idBodega">@bodega.nombre</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Bodega Destino</label>
+                            <select class="form-control form-control-custom" @bind="nuevoTraslado.idBodegaDestino">
+                                <option value="">-- Seleccione la bodega de destino --</option>
+                                @if (bodegas != null && bodegas.Any())
+                                {
+                                    @foreach (var bodega in bodegas)
+                                    {
+                                        <option value="@bodega.idBodega">@bodega.nombre</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Fecha Traslado</label>
+                            <InputDate class="form-control form-control-custom" @bind-Value="nuevoTraslado.fechaTraslado" />
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Realizado Por</label>
+                            <select class="form-control form-control-custom" @bind="nuevoTraslado.realizadoPor">
+                                <option value="">-- Seleccione un usuario --</option>
+                                @if (usuarios != null && usuarios.Any())
+                                {
+                                    @foreach (var usuario in usuarios)
+                                    {
+                                        <option value="@usuario.idUsuario">@usuario.nombre (@usuario.rol)</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Estado</label>
+                            <InputSelect class="form-control form-control-custom" @bind-Value="nuevoTraslado.estado">
+                                <option value="Pendiente">Pendiente</option>
+                                <option value="Completado">Completado</option>
+                                <option value="Cancelado">Cancelado</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end mt-4">
+                        <button type="submit" class="btn btn-primary-custom">
+                            <i class="fas fa-save mr-2"></i>Registrar Traslado
+                        </button>
+                    </div>
+                </EditForm>
             </div>
 
             <!-- Lista de traslados -->
-            <div class="card border-0 shadow-sm mt-5">
-                <div class="card-header card-header-custom py-2">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h6 class="m-0 font-weight-bold">
-                            <i class="fas fa-history mr-2"></i>Historial de Traslados
-                        </h6>
-                        <button class="btn btn-sm btn-light" @onclick="CargarTraslados">
-                            <i class="fas fa-sync-alt mr-1"></i>Actualizar
-                        </button>
-                    </div>
+            <div class="mt-5">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h4 class="section-title m-0">Historial de Traslados</h4>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="CargarTraslados">
+                        <i class="fas fa-sync-alt mr-1"></i>Actualizar
+                    </button>
                 </div>
-                <div class="card-body bg-white p-0">
-                    @if (traslados == null)
-                    {
-                        <div class="loading-container">
-                            <div class="text-center">
-                                <div class="spinner-border spinner-custom" role="status">
-                                    <span class="sr-only">Cargando...</span>
-                                </div>
-                                <p class="mt-3 text-muted">Cargando historial de traslados...</p>
+
+                @if (traslados == null)
+                {
+                    <div class="loading-container">
+                        <div class="text-center">
+                            <div class="spinner-border spinner-custom" role="status">
+                                <span class="sr-only">Cargando...</span>
                             </div>
+                            <p class="mt-3 text-muted">Cargando historial de traslados...</p>
                         </div>
-                    }
-                    else if (!traslados.Any())
-                    {
-                        <div class="text-center py-5">
-                            <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
-                            <h5 class="text-muted">No hay traslados registrados</h5>
-                            <p class="text-muted">Comience registrando un nuevo traslado</p>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="table-responsive">
-                            <table class="table table-custom table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Producto</th>
-                                        <th>Origen</th>
-                                        <th>Destino</th>
-                                        <th>Cantidad</th>
-                                        <th>Fecha</th>
-                                        <th>Usuario</th>
-                                        <th>Estado</th>
-                                        <th>Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var t in traslados)
-                                    {
-                                        <tr>
-                                            <td class="font-weight-bold">#@t.idTraslado</td>
-                                            <td>@t.codigoProducto</td>
-                                            <td>Bodega @t.idBodegaOrigen</td>
-                                            <td>Bodega @t.idBodegaDestino</td>
-                                            <td>@t.cantidad</td>
-                                            <td>@t.fechaTraslado?.ToString("dd/MM/yyyy")</td>
-                                            <td>@t.realizadoPor</td>
-                                            <td>
-                                                <span class="status-badge @GetStatusClass(t.estado)">
-                                                    @t.estado
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-primary">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-                </div>
-                <div class="card-footer bg-white border-top-0">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="text-muted small">Mostrando @traslados?.Count registros</span>
-                        <nav aria-label="Page navigation">
-                            <ul class="pagination pagination-sm mb-0">
-                                <li class="page-item disabled">
-                                    <a class="page-link" href="#" tabindex="-1">Anterior</a>
-                                </li>
-                                <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                                <li class="page-item"><a class="page-link" href="#">2</a></li>
-                                <li class="page-item"><a class="page-link" href="#">3</a></li>
-                                <li class="page-item">
-                                    <a class="page-link" href="#">Siguiente</a>
-                                </li>
-                            </ul>
-                        </nav>
                     </div>
-                </div>
+                }
+                else if (!traslados.Any())
+                {
+                    <div class="text-center py-5 bg-light rounded">
+                        <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No hay traslados registrados</h5>
+                        <p class="text-muted">Comience registrando un nuevo traslado</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-custom table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Producto</th>
+                                    <th>Origen</th>
+                                    <th>Destino</th>
+                                    <th>Cantidad</th>
+                                    <th>Fecha</th>
+                                    <th>Usuario</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var t in traslados)
+                                {
+                                    var usuario = usuarios?.FirstOrDefault(u => u.idUsuario == t.realizadoPor);
+                                    var producto = productos?.FirstOrDefault(p => p.codigoProducto == t.codigoProducto);
+                                    var bodegaOrigen = bodegas?.FirstOrDefault(b => b.idBodega == t.idBodegaOrigen);
+                                    var bodegaDestino = bodegas?.FirstOrDefault(b => b.idBodega == t.idBodegaDestino);
+
+                                    <tr>
+                                        <td class="font-weight-bold">#@t.idTraslado</td>
+                                        <td>@(producto?.descripcion ?? t.codigoProducto.ToString())</td>
+                                        <td>@(bodegaOrigen?.nombre ?? t.idBodegaOrigen.ToString())</td>
+                                        <td>@(bodegaDestino?.nombre ?? t.idBodegaDestino.ToString())</td>
+                                        <td>@t.cantidad</td>
+                                        <td>@t.fechaTraslado?.ToString("dd/MM/yyyy")</td>
+                                        <td>@(usuario?.nombre ?? t.realizadoPor.ToString())</td>
+                                        <td>
+                                            <span class="status-badge @GetStatusClass(t.estado)">
+                                                @t.estado
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
             </div>
         </div>
     </div>
 </div>
 
 @code {
-    // [Mantener todo el código original sin cambios]
-    List<TrasladoDto> traslados = new();
-    TrasladoDto nuevoTraslado = new TrasladoDto
+    private List<Usuario> usuarios = new();
+    private List<Producto> productos = new();
+    private List<TrasladoModel> traslados = new();
+    private List<Bodega> bodegas = new();
+
+    private TrasladoModel nuevoTraslado = new()
         {
             fechaTraslado = DateTime.Now,
             estado = "Pendiente"
@@ -323,22 +316,84 @@
         return estado switch
         {
             "Completado" => "status-completado",
-            "Cancelado" => "bg-danger text-white",
-            "En progreso" => "bg-info text-white",
+            "Cancelado" => "status-cancelado",
             _ => "status-pendiente"
         };
     }
 
+    private void ProductoSeleccionado(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int codigoSeleccionado))
+        {
+            var producto = productos?.FirstOrDefault(p => p.codigoProducto == codigoSeleccionado);
+            if (producto != null)
+            {
+                nuevoTraslado.codigoProducto = producto.codigoProducto;
+            }
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
+        await ObtenerBodegas();
         await CargarTraslados();
+        await CargarProductos();
+        await CargarUsuarios();
+    }
+
+    private async Task CargarUsuarios()
+    {
+        try
+        {
+            var response = await Http.GetStringAsync("api/Usuario/obtener-todos");
+            if (!string.IsNullOrEmpty(response))
+            {
+                usuarios = JsonSerializer.Deserialize<List<Usuario>>(response) ?? new List<Usuario>();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error cargando usuarios: {ex.Message}");
+        }
+    }
+
+    private async Task CargarProductos()
+    {
+        try
+        {
+            var response = await Http.GetStringAsync("api/Producto/GetAllProductos");
+            if (!string.IsNullOrEmpty(response))
+            {
+                productos = JsonSerializer.Deserialize<List<Producto>>(response) ?? new List<Producto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al cargar productos: {ex.Message}");
+        }
+    }
+
+    private async Task ObtenerBodegas()
+    {
+        try
+        {
+            var response = await Http.GetStringAsync("api/Bodega/obtener-todos");
+            if (!string.IsNullOrEmpty(response))
+            {
+                bodegas = JsonSerializer.Deserialize<List<Bodega>>(response) ?? new List<Bodega>();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error cargando bodegas: {ex.Message}");
+        }
     }
 
     private async Task CargarTraslados()
     {
         try
         {
-            traslados = await Http.GetFromJsonAsync<List<TrasladoDto>>("api/Traslado/GetTodosLosTraslados");
+            traslados = await Http.GetFromJsonAsync<List<TrasladoModel>>("api/Traslado/GetTodosLosTraslados") ?? new List<TrasladoModel>();
         }
         catch (Exception ex)
         {
@@ -355,7 +410,11 @@
             if (response.IsSuccessStatusCode)
             {
                 await JS.InvokeVoidAsync("alert", "Traslado registrado correctamente");
-                nuevoTraslado = new TrasladoDto();
+                nuevoTraslado = new TrasladoModel
+                    {
+                        fechaTraslado = DateTime.Now,
+                        estado = "Pendiente"
+                    };
                 await CargarTraslados();
             }
             else
@@ -370,34 +429,32 @@
         }
     }
 
-    public class Response
+    public class Usuario
     {
-        public int StatusCode { get; set; }
-        public string ErrorMessage { get; set; }
+        public int idUsuario { get; set; }
+        public string nombre { get; set; } = string.Empty;
+        public string rol { get; set; } = string.Empty;
+        public string codigoAcceso { get; set; } = string.Empty;
     }
 
-    public class TrasladoDto
+    public class Bodega
+    {
+        public int idBodega { get; set; }
+        public string nombre { get; set; } = string.Empty;
+        public string ubicacion { get; set; } = string.Empty;
+        public int responsable { get; set; }
+        public DateTime fecha { get; set; }
+    }
+
+    public class TrasladoModel
     {
         public int idTraslado { get; set; }
-
-        [Required(ErrorMessage = "El código de producto es requerido")]
         public int codigoProducto { get; set; }
-
-        [Required(ErrorMessage = "La bodega de origen es requerida")]
         public int idBodegaOrigen { get; set; }
-
-        [Required(ErrorMessage = "La bodega de destino es requerida")]
         public int idBodegaDestino { get; set; }
-
-        [Required(ErrorMessage = "La cantidad es requerida")]
-        [Range(1, int.MaxValue, ErrorMessage = "La cantidad debe ser mayor a 0")]
         public int cantidad { get; set; }
-
         public DateTime? fechaTraslado { get; set; }
-
-        [Required(ErrorMessage = "El ID del usuario es requerido")]
         public int realizadoPor { get; set; }
-
-        public string estado { get; set; }
+        public string estado { get; set; } = "Pendiente";
     }
 }

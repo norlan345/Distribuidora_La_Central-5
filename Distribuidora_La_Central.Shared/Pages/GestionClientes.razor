@@ -233,10 +233,25 @@
 
     async Task EliminarCliente(int codigoCliente)
     {
-        var response = await Http.DeleteAsync($"api/Cliente/EliminarCliente/{codigoCliente}");
-        if (response.IsSuccessStatusCode)
+        try
         {
-            await CargarClientes();
+            var response = await Http.DeleteAsync($"api/Cliente/EliminarCliente/{codigoCliente}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                await CargarClientes();
+                // Mostrar mensaje de éxito
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                // Mostrar mensaje de error al usuario
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al eliminar cliente: {ex.Message}");
+            // Mostrar mensaje de error al usuario
         }
     }
 

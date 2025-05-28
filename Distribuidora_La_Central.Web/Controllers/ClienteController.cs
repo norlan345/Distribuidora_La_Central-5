@@ -91,13 +91,24 @@ namespace Distribuidora_La_Central.Web.Controllers
         [Route("EliminarCliente/{id}")]
         public IActionResult EliminarCliente(int id)
         {
-            using SqlConnection con = new SqlConnection(_configuration.GetConnectionString("UsuarioAppCon"));
-            string query = "DELETE FROM Cliente WHERE codigoCliente = @id";
-            using SqlCommand cmd = new SqlCommand(query, con);
-            cmd.Parameters.AddWithValue("@id", id);
-            con.Open();
-            int rowsAffected = cmd.ExecuteNonQuery();
-            return Ok(rowsAffected > 0);
+            try
+            {
+                using SqlConnection con = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+                string query = "DELETE FROM Cliente WHERE codigoCliente = @id";
+                using SqlCommand cmd = new SqlCommand(query, con);
+                cmd.Parameters.AddWithValue("@id", id);
+                con.Open();
+                int rowsAffected = cmd.ExecuteNonQuery();
+
+                if (rowsAffected > 0)
+                    return Ok(new { message = "Cliente eliminado correctamente" });
+                else
+                    return NotFound(new { message = "Cliente no encontrado" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error al eliminar cliente: {ex.Message}" });
+            }
         }
 
 

@@ -5,6 +5,10 @@
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
 
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" integrity="sha512-bla...bla==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+
 <div class="container-fluid px-4 py-3">
     <div class="card mb-4 border-0 shadow-sm">
         <div class="card-header bg-primary text-white py-3">
@@ -107,21 +111,24 @@
                                     </td>
                                     <td class="text-end pe-4">
                                         <div class="btn-group btn-group-sm" role="group">
-                                            <!-- Botón de Abono que abre el modal -->
+                                            <!-- Botón de Abono -->
                                             <button class="btn btn-outline-success"
-                                            @onclick="() => VerAbonos(credito.IdCredito, credito.codigoFactura)"
-                                            title="Registrar abono">
-                                                <i class="fas fa-money-bill-wave"></i> Abono
+                                                    @onclick="() => VerAbonos(credito.IdCredito, credito.codigoFactura)"
+                                                    title="Registrar abono">
+                                                <i class="fas fa-money-bill-wave"></i>
                                             </button>
+
                                             <!-- Botón de Editar -->
-                                            <button class="btn btn-outline-primary" @onclick="() => EditarCredito(credito.IdCredito)"
-                                            title="Editar crédito">
+                                            <button class="btn btn-outline-primary"
+                                                    @onclick="() => EditarCredito(credito.IdCredito)"
+                                                    title="Editar crédito">
                                                 <i class="fas fa-edit"></i>
                                             </button>
 
                                             <!-- Botón de Eliminar -->
-                                            <button class="btn btn-outline-danger" @onclick="() => EliminarCredito(credito.IdCredito)"
-                                            title="Eliminar crédito">
+                                            <button class="btn btn-outline-danger"
+                                                    @onclick="() => EliminarCredito(credito.IdCredito)"
+                                                    title="Eliminar crédito">
                                                 <i class="fas fa-trash-alt"></i>
                                             </button>
                                         </div>
