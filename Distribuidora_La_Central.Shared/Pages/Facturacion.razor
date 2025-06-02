@@ -1,266 +1,1217 @@
-﻿@page "/facturacion"
+﻿
+@page "/factura"
 @inject HttpClient Http
 @using Distribuidora_La_Central.Shared.Models
-
+@using System.Text.Json;
 @using System.Net.Http
 @using System.Net.Http.Json
 
-<h3>Gestión de Facturas</h3>
 
-<div class="mb-3">
-    <button class="btn @GetTabClass("facturacion") me-2" @onclick="@(() => CambiarTab("facturacion"))">Facturación</button>
-    <button class="btn @GetTabClass("historial")" @onclick="@(() => CambiarTab("historial"))">Historial de Facturas</button>
-</div>
+<style>
+    /* Estilos optimizados para Android */
+    :root {
+    --primary-color: #1A2E5A;
+    --secondary-color: #E30613;
+    --accent-color: #FFC72C;
+    --text-color: #333333;
+    --light-text: #777777;
+    --border-color: #E0E0E0;
+    --bg-color: #F5F9FF;
+    }
 
-@if (activeTab == "facturacion")
-{
-    <div class="factura-formulario">
-        <EditForm Model="@factura" OnValidSubmit="@GuardarFactura">
-            <DataAnnotationsValidator />
-            <ValidationSummary />
+    * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    }
 
-            <div class="row">
-                <div class="col-md-6 mb-3">
-                    <label>Cliente:</label>
-                    <select @bind="factura.codigoCliente" class="form-control">
-                        <option value="">-- Seleccione un cliente --</option>
-                        @if (clientes != null)
-                        {
-                            @foreach (var c in clientes)
+    .invoice-container {
+    font-family: 'Roboto', sans-serif;
+    padding: 10px;
+    background-color: var(--bg-color);
+    min-height: 100vh;
+    }
+
+    .invoice-header {
+    margin-bottom: 15px;
+    }
+
+    .invoice-header h2 {
+    color: var(--primary-color);
+    font-size: 1.4rem;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    }
+
+    .invoice-tabs {
+    display: flex;
+    gap: 5px;
+    overflow-x: auto;
+    padding-bottom: 3px;
+    }
+
+    .invoice-tabs button {
+    background: none;
+    border: none;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    border-radius: 4px;
+    background-color: #f0f0f0;
+    }
+
+    .invoice-tabs button.active {
+    background-color: var(--primary-color);
+    color: white;
+    }
+
+    .invoice-card {
+    background: white;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .form-section {
+    margin-bottom: 20px;
+    }
+
+    .form-section h4 {
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+    color: var(--primary-color);
+    }
+
+    .form-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    }
+
+    .input-group {
+    margin-bottom: 10px;
+    }
+
+    .input-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    }
+
+    .input-style, .select-style {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    }
+
+    .product-form-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    }
+
+    .btn-add-product {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    margin-top: 5px;
+    }
+
+    .products-table-container {
+    overflow-x: auto;
+    margin-top: 15px;
+    }
+
+    .products-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    }
+
+    .products-table th {
+    background-color: #f5f5f5;
+    padding: 8px;
+    text-align: left;
+    }
+
+    .products-table td {
+    padding: 8px;
+    border-bottom: 1px solid var(--border-color);
+    }
+
+    .form-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 15px;
+    }
+
+    .btn-save, .btn-cancel, .btn-payment {
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    border: none;
+    }
+
+    .btn-save {
+    background-color: var(--primary-color);
+    color: white;
+    }
+
+    .btn-cancel {
+    background-color: #f0f0f0;
+    color: var(--text-color);
+    }
+
+    .btn-payment {
+    background-color: var(--secondary-color);
+    color: white;
+    }
+
+    /* Modal optimizado para Android */
+    .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 15px;
+    }
+
+    .payment-modal {
+    background: white;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 500px;
+    padding: 15px;
+    }
+
+    .modal-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    }
+
+    .close-modal {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    }
+
+    /* Media queries para tablets */
+    @@media (min-width: 600px) {
+    .form-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+    }
+
+    .form-grid .input-group {
+    flex: 1 1 45%;
+    }
+
+    .product-form-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+    }
+
+    .product-form-grid .input-group {
+    flex: 1 1 45%;
+    }
+
+    .form-actions {
+    flex-direction: row;
+    }
+    }
+
+    /* Variables de color */
+    :root {
+        --primary-blue: #1976D2;
+        --primary-blue-dark: #1565C0;
+        --primary-blue-light: #E3F2FD;
+        --light-blue: #E1F5FE;
+        --white: #FFFFFF;
+        --text-dark: #333333;
+        --text-light: #777777;
+        --border-color: #E0E0E0;
+        --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --transition: all 0.3s ease;
+    }
+
+    /* Estructura principal */
+    .filters-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        backdrop-filter: blur(3px);
+    }
+
+    .filters-panel-container {
+        width: 90%;
+        max-width: 850px;
+        max-height: 90vh;
+        overflow-y: auto;
+        animation: fadeIn 0.3s ease-out;
+    }
+
+    @@keyframes fadeIn {
+        from
+
+    {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    }
+
+    .filters-panel {
+        background-color: var(--white);
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Encabezado con degradado azul */
+    .filters-header {
+        background: linear-gradient(135deg, var(--primary-blue), var(--primary-blue-dark));
+        color: var(--white);
+        padding: 1.5rem;
+        text-align: center;
+        position: relative;
+    }
+
+    .header-content {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .filters-header h3 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 500;
+        flex-grow: 1;
+        text-align: center;
+        letter-spacing: 0.5px;
+    }
+
+    .filters-header i {
+        font-size: 1.3rem;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        color: var(--white);
+        font-size: 1.3rem;
+        cursor: pointer;
+        padding: 5px;
+        transition: var(--transition);
+    }
+
+        .close-btn:hover {
+            transform: rotate(90deg);
+        }
+
+    /* Cuerpo del panel */
+    .filters-body {
+        padding: 0;
+    }
+
+    .filter-section {
+        padding: 1.5rem;
+        margin-bottom: 1px;
+    }
+
+    .blue-panel {
+        background-color: var(--primary-blue-light);
+        border-bottom: 1px solid rgba(25, 118, 210, 0.1);
+    }
+
+    .white-panel {
+        background-color: var(--white);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .light-blue-panel {
+        background-color: var(--light-blue);
+    }
+
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 500;
+        color: var(--primary-blue-dark);
+        margin-bottom: 1.2rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+        .section-title i {
+            font-size: 1rem;
+        }
+
+    /* Grid de filtros */
+    .filters-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .filter-item {
+        margin-bottom: 0.5rem;
+    }
+
+    .filter-label {
+        display: block;
+        margin-bottom: 0.6rem;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--text-dark);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+        .filter-label i {
+            font-size: 0.9rem;
+            color: var(--primary-blue);
+        }
+
+    /* Elementos de formulario */
+    .filter-select, .filter-input {
+        width: 100%;
+        padding: 0.7rem 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        font-size: 0.9rem;
+        transition: var(--transition);
+        background-color: var(--white);
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+        .filter-select:focus, .filter-input:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+        }
+
+    .input-with-symbol {
+        position: relative;
+    }
+
+    .input-symbol {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-light);
+        font-weight: 500;
+    }
+
+    .filter-input.with-symbol {
+        padding-left: 30px;
+    }
+
+    .input-with-icon {
+        position: relative;
+    }
+
+        .input-with-icon i {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--primary-blue);
+            pointer-events: none;
+        }
+
+    /* Toggle switch mejorado */
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 50px;
+        height: 26px;
+        margin-left: auto;
+    }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: .4s;
+        border-radius: 34px;
+    }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+    input:checked + .toggle-slider {
+        background-color: var(--primary-blue);
+    }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+
+    /* Pie de página */
+    .filters-footer {
+        display: flex;
+        justify-content: flex-end;
+        padding: 1.2rem 1.5rem;
+        background-color: var(--white);
+        border-top: 1px solid var(--border-color);
+        gap: 1rem;
+    }
+
+    .btn {
+        padding: 0.7rem 1.5rem;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: var(--transition);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: none;
+        box-shadow: var(--shadow);
+    }
+
+    .btn-primary {
+        background-color: var(--primary-blue);
+        color: var(--white);
+    }
+
+        .btn-primary:hover {
+            background-color: var(--primary-blue-dark);
+            transform: translateY(-2px);
+        }
+
+    .btn-outline {
+        background-color: transparent;
+        color: var(--primary-blue);
+        border: 1px solid var(--primary-blue);
+    }
+
+        .btn-outline:hover {
+            background-color: var(--primary-blue-light);
+            transform: translateY(-2px);
+        }
+
+    /* Responsive */
+    @@media (max-width: 768px) {
+        .filters-grid
+
+    {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .filters-footer {
+        justify-content: center;
+    }
+
+    }
+
+    @@media (max-width: 480px) {
+        .filters-grid
+
+    {
+        grid-template-columns: 1fr;
+    }
+
+    .filters-footer {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    }
+
+    .fa-spinner {
+        margin-right: 8px;
+    }
+
+    .btn[disabled] {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .btn-primary:active {
+        transform: translateY(1px);
+    }
+
+    .btn-filter {
+        /* Estilos base */
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 0.6rem 1.2rem;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+        /* Colores y bordes */
+        background-color: var(--primary-blue-light);
+        color: var(--primary-blue-dark);
+        border: 1px solid var(--primary-blue);
+        /* Efectos visuales */
+        box-shadow: 0 2px 5px rgba(25, 118, 210, 0.1);
+    }
+
+        .btn-filter:hover {
+            background-color: var(--primary-blue);
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(25, 118, 210, 0.2);
+        }
+
+        .btn-filter:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 3px rgba(25, 118, 210, 0.2);
+        }
+
+        .btn-filter i {
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-filter:hover i {
+            color: white;
+            transform: scale(1.1);
+        }
+
+        /* Efecto de onda al hacer clic */
+        .btn-filter::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 5px;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.5);
+            opacity: 0;
+            border-radius: 100%;
+            transform: scale(1, 1) translate(-50%);
+            transform-origin: 50% 50%;
+        }
+
+        .btn-filter:focus:not(:active)::after {
+            animation: ripple 0.6s ease-out;
+        }
+
+    @@keyframes ripple {
+        0%
+
+    {
+        transform: scale(0, 0);
+        opacity: 0.5;
+    }
+
+    100% {
+        transform: scale(20, 20);
+        opacity: 0;
+    }
+
+    }
+</style>
+
+
+<div class="invoice-container">
+    <div class="invoice-header">
+        <h2><i class="fas fa-file-invoice"></i> Gestión de Facturas</h2>
+
+        <div class="invoice-tabs">
+            <button class="@GetTabClass("facturacion")" @onclick="@(() => CambiarTab("facturacion"))">
+                <i class="fas fa-plus-circle"></i> Nueva Factura
+            </button>
+            <button class="@GetTabClass("historial")" @onclick="@(() => CambiarTab("historial"))">
+                <i class="fas fa-history"></i> Historial
+            </button>
+        </div>
+    </div>
+
+    @if (activeTab == "facturacion")
+    {
+        <div class="invoice-card">
+            <EditForm Model="@factura" OnValidSubmit="@GuardarFactura">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="form-section">
+                    <h4><i class="fas fa-info-circle"></i> Información Básica</h4>
+                    <div class="form-grid">
+                        <div class="input-group">
+                            <label><i class="fas fa-user"></i> Cliente</label>
+                            <select @bind="factura.codigoCliente" class="select-style">
+                                <option value="">-- Seleccione cliente --</option>
+                                @if (clientes != null)
+                                {
+                                    @foreach (var c in clientes)
+                                    {
+                                        <option value="@c.codigoCliente">@c.nombre @c.apellido</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="input-group">
+                            <label><i class="fas fa-calendar-alt"></i> Fecha</label>
+                            <input type="date" @bind="factura.fecha" class="input-style" />
+                        </div>
+
+                        <div class="input-group">
+                            <label><i class="fas fa-dollar-sign"></i> Total</label>
+                            <input type="text" @bind="factura.totalFactura" class="input-style" readonly />
+                        </div>
+
+                        <div class="input-group">
+                            <label><i class="fas fa-wallet"></i> Saldo</label>
+                            <input type="text" @bind="factura.saldo" class="input-style" readonly />
+                        </div>
+
+                        <div class="input-group">
+                            <label><i class="fas fa-tags"></i> Tipo</label>
+                            <select @bind="factura.tipo" class="select-style" required>
+                                <option value="">-- Seleccione tipo --</option>
+                                <option value="Contado">Contado</option>
+                                <option value="Crédito">Crédito</option>
+                            </select>
+                            <ValidationMessage For="@(() => factura.tipo)" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="divider-blue"></div>
+
+                <div class="form-section">
+                    <h4><i class="fas fa-boxes"></i> Productos</h4>
+                    <div class="product-form-grid">
+                        <div class="input-group">
+                            <label><i class="fas fa-barcode"></i> Producto</label>
+                            <select @onchange="ProductoSeleccionado" class="select-style">
+                                <option value="">-- Seleccione producto --</option>
+                                @if (productos != null && productos.Any())
+                                {
+                                    @foreach (var prod in productos)
+                                    {
+                                        <option value="@prod.codigoProducto">@prod.descripcion</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="input-group">
+                            <label><i class="fas fa-hashtag"></i> Código</label>
+                            <input type="text" value="@productoSeleccionado?.codigoProducto" class="input-style" readonly />
+                        </div>
+
+                        <div class="input-group">
+                            <label><i class="fas fa-tag"></i> Precio</label>
+                            <input type="text" value="@productoSeleccionado?.costo.ToString("F2")" class="input-style" readonly />
+                        </div>
+
+                        <div class="input-group">
+                            <label><i class="fas fa-calculator"></i> Cantidad</label>
+                            <input type="number" @bind="detalleFactura.cantidad" min="1" class="input-style" />
+                        </div>
+
+                        <button type="button" class="btn-add-product" @onclick="AgregarProducto">
+                            <i class="fas fa-plus"></i> Agregar
+                        </button>
+                    </div>
+
+                    @if (detallesFactura.Any())
+                    {
+                        <div class="products-table-container">
+                            <table class="products-table">
+                                <thead>
+                                    <tr>
+                                        <th><i class="fas fa-hashtag"></i> Código</th>
+                                        <th><i class="fas fa-align-left"></i> Descripción</th>
+                                        <th><i class="fas fa-tag"></i> Precio</th>
+                                        <th><i class="fas fa-calculator"></i> Cantidad</th>
+                                        <th><i class="fas fa-money-bill-wave"></i> Subtotal</th>
+                                        <th><i class="fas fa-cog"></i> Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var detalle in detallesFactura)
+                                    {
+                                        <tr>
+                                            <td>@detalle.codigoProducto</td>
+                                            <td>@(productos.FirstOrDefault(p => p.codigoProducto == detalle.codigoProducto)?.descripcion)</td>
+                                            <td>@detalle.precioUnitario.ToString("F2")</td>
+                                            <td>@detalle.cantidad</td>
+                                            <td>@((detalle.cantidad * detalle.precioUnitario).ToString("F2"))</td>
+                                            <td>
+                                                <button type="button" class="btn-remove-product"
+                                                @onclick="@(() => EliminarProducto(detalle.codigoProducto))">
+                                                    <i class="fas fa-trash-alt"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="4" class="text-right"><strong>Total:</strong></td>
+                                        <td><strong>@detallesFactura.Sum(d => d.cantidad * d.precioUnitario).ToString("F2")</strong></td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    }
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn-save">
+                        <i class="fas fa-save"></i> @(editando ? "Actualizar Factura" : "Guardar Factura")
+                    </button>
+                    @if (editando)
+                    {
+                        <button type="button" class="btn-cancel" @onclick="CancelarEdicion">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                    }
+                    <button type="button" class="btn-payment" @onclick="MostrarModalAbono">
+                        <i class="fas fa-money-bill-wave"></i> Registrar Abono
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+
+        @if (mostrarModalAbono)
+        {
+            <div class="modal-overlay">
+                <div class="payment-modal">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-money-bill-wave"></i> Registrar Abono</h3>
+                        <button @onclick="CerrarModalAbono" class="close-modal">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <EditForm Model="abono" OnValidSubmit="GuardarAbono">
+                            <div class="input-group">
+                                <label><i class="fas fa-file-invoice"></i> Factura</label>
+                                <select @bind="selectedCodigoFactura" class="select-style">
+                                    <option disabled value="0">-- Seleccione factura pendiente --</option>
+                                    @if (facturas != null && facturas.Any())
+                                    {
+                                        foreach (var factura in facturas.OrderBy(f => f.codigoFactura))
+                                        {
+                                            <option value="@factura.codigoFactura">
+                                                Factura #@factura.codigoFactura - Saldo: @factura.saldo.ToString("C")
+                                            </option>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <option disabled value="0">No hay facturas pendientes</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="input-group">
+                                <label><i class="fas fa-receipt"></i> Total Factura</label>
+                                <input value="@totalFactura.ToString("C")" class="input-style" readonly />
+                            </div>
+
+                            <div class="input-group">
+                                <label><i class="fas fa-money-bill-alt"></i> Saldo Actual</label>
+                                <input value="@saldoActual.ToString("C")" class="input-style" readonly />
+                            </div>
+
+                            <div class="input-group">
+                                <label><i class="fas fa-hand-holding-usd"></i> Abono</label>
+                                <InputNumber @bind-Value="abono.montoAbono" class="input-style"
+                                @oninput="ActualizarEstadoFactura" min="0" max="@saldoActual" />
+                                <ValidationMessage For="@(() => abono.montoAbono)" />
+                            </div>
+
+                            <div class="input-group">
+                                <label><i class="fas fa-info-circle"></i> Estado</label>
+                                <input value="@estadoFactura" class="input-style @(estadoFactura == "Pagado" ? "status-paid" : "status-pending")" readonly />
+                            </div>
+
+                            <div class="modal-actions">
+                                <button type="submit" class="btn-confirm-payment">
+                                    <i class="fas fa-check-circle"></i> @(estadoFactura == "Pagado" ? "Factura Pagada" : "Confirmar Abono")
+                                </button>
+                            </div>
+
+                            @if (!string.IsNullOrEmpty(errorMessage))
                             {
-                                <option value="@c.codigoCliente">@c.nombre @c.apellido</option>
+                                <div class="error-message">
+                                    <i class="fas fa-exclamation-circle"></i> @errorMessage
+                                </div>
                             }
-                        }
-                    </select>
-                </div>
-
-                <div class="col-md-6 mb-3">
-                    <label>Fecha:</label>
-                    <input type="date" @bind="factura.fecha" class="form-control" />
-                </div>
-
-                <div class="col-md-6 mb-3">
-                    <label>Total Factura:</label>
-                    <input type="text" @bind="factura.totalFactura" class="form-control" readonly />
-                </div>
-
-                <div class="col-md-6 mb-3">
-                    <label>Saldo:</label>
-                    <input type="text" @bind="factura.saldo" class="form-control" readonly />
-                </div>
-
-                <div class="col-md-6 mb-3">
-                    <label>Tipo:</label>
-                    <select @bind="factura.tipo" class="form-control">
-                        <option value="">-- Seleccione --</option>
-                        <option value="Contado">Contado</option>
-                        <option value="Crédito">Crédito</option>
-                    </select>
+                        </EditForm>
+                    </div>
                 </div>
             </div>
+        }
+    }
 
-            <hr />
-            <h5>Agregar Producto</h5>
-            <div class="row">
-                <div class="col-md-4 mb-3">
-                    <label>Descripción del Producto:</label>
-                    <select class="form-control" @onchange="ProductoSeleccionado">
-                        <option value="">-- Seleccione un producto --</option>
-                        @if (productos != null && productos.Any())
-                        {
-                            @foreach (var prod in productos)
-                            {
-                                <option value="@prod.codigoProducto">@prod.descripcion</option>
-                            }
-                        }
-                    </select>
-                </div>
+    @if (activeTab == "historial")
+    {
 
-                <div class="col-md-2 mb-3">
-                    <label>Código:</label>
-                    <input type="text" class="form-control" value="@productoSeleccionado?.codigoProducto" readonly />
-                </div>
+        <div class="invoice-card">
+            <div class="card-header">
+                <h3><i class="fas fa-history"></i> Historial de Facturas</h3>
 
-                <div class="col-md-2 mb-3">
-                    <label>Precio Unitario:</label>
-                    <input type="text" class="form-control" value="@productoSeleccionado?.costo.ToString("F2")" readonly />
-                </div>
-
-                <div class="col-md-2 mb-3">
-                    <label>Cantidad:</label>
-                    <input type="number" class="form-control" @bind="detalleFactura.cantidad" min="1" />
-                </div>
-
-                <div class="col-md-2 mb-3 d-flex align-items-end">
-                    <button type="button" class="btn btn-primary" @onclick="AgregarProducto">Agregar</button>
-                </div>
+                <!-- Botón para mostrar/ocultar filtros -->
+                <button class="btn-filter" @onclick="ToggleFiltros">
+                    <i class="fas fa-filter"></i> @(mostrarFiltros ? "Ocultar Filtros" : "Mostrar Filtros")
+                </button>
             </div>
 
-            <!-- Tabla de productos agregados -->
-            @if (detallesFactura.Any())
+
+            @if (mostrarFiltros)
             {
-                <div class="mt-3">
-                    <h5>Productos a Facturar</h5>
-                    <table class="table table-bordered">
+                <div class="filters-overlay" @onclick="() => mostrarFiltros = false">
+                    <div class="filters-panel-container" @onclick:stopPropagation>
+                        <div class="filters-panel">
+                            <!-- Encabezado con degradado azul -->
+                            <div class="filters-header">
+                                <div class="header-content">
+                                    <i class="fas fa-filter"></i>
+                                    <h3>Filtrar Facturas</h3>
+                                    <button class="close-btn" @onclick="() => mostrarFiltros = false">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Cuerpo con paneles alternados -->
+                            <div class="filters-body">
+                                <!-- Panel azul para filtros principales -->
+                                <div class="filter-section blue-panel">
+                                    <div class="section-title">
+                                        <i class="fas fa-sliders-h"></i> Filtros Principales
+                                    </div>
+                                    <div class="filters-grid">
+                                        <!-- Cliente -->
+                                        <div class="filter-item">
+                                            <label class="filter-label">
+                                                <i class="fas fa-user"></i> Cliente
+                                            </label>
+                                            <select @bind="filtroCodigoCliente" class="filter-select">
+                                                <option value="0">Todos los clientes</option>
+                                                @foreach (var c in clientes)
+                                                {
+                                                    <option value="@c.codigoCliente">@c.nombre @c.apellido</option>
+                                                }
+                                            </select>
+                                        </div>
+
+                                        <!-- Fecha Desde -->
+                                        <div class="filter-item">
+                                            <label class="filter-label">
+                                                <i class="fas fa-calendar"></i> Fecha Desde
+                                            </label>
+                                            <div class="input-with-icon">
+                                                <input type="date" @bind="filtroFechaDesde" class="filter-input" />
+                                                <i class="fas fa-calendar-alt"></i>
+                                            </div>
+                                        </div>
+
+                                        <!-- Fecha Hasta -->
+                                        <div class="filter-item">
+                                            <label class="filter-label">
+                                                <i class="fas fa-calendar"></i> Fecha Hasta
+                                            </label>
+                                            <div class="input-with-icon">
+                                                <input type="date" @bind="filtroFechaHasta" class="filter-input" />
+                                                <i class="fas fa-calendar-alt"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Panel blanco para filtros financieros -->
+                                <div class="filter-section white-panel">
+                                    <div class="section-title">
+                                        <i class="fas fa-money-bill-wave"></i> Filtros Financieros
+                                    </div>
+                                    <div class="filters-grid">
+                                        <!-- Monto Mínimo -->
+                                        <div class="filter-item">
+                                            <label class="filter-label">
+                                                <i class="fas fa-dollar-sign"></i> Monto Mínimo
+                                            </label>
+                                            <div class="input-with-symbol">
+                                                <span class="input-symbol">$</span>
+                                                <input type="number" @bind="filtroMontoMinimo" min="0" step="0.01"
+                                                       class="filter-input with-symbol" placeholder="0.00" />
+                                            </div>
+                                        </div>
+
+                                        <!-- Monto Máximo -->
+                                        <div class="filter-item">
+                                            <label class="filter-label">
+                                                <i class="fas fa-dollar-sign"></i> Monto Máximo
+                                            </label>
+                                            <div class="input-with-symbol">
+                                                <span class="input-symbol">$</span>
+                                                <input type="number" @bind="filtroMontoMaximo" min="0" step="0.01"
+                                                       class="filter-input with-symbol" placeholder="0.00" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Panel azul claro para filtros adicionales -->
+                                <div class="filter-section light-blue-panel">
+                                    <div class="section-title">
+                                        <i class="fas fa-cog"></i> Filtros Adicionales
+                                    </div>
+                                    <div class="filters-grid">
+                                        <!-- Tipo -->
+                                        <div class="filter-item">
+                                            <label class="filter-label">
+                                                <i class="fas fa-tag"></i> Tipo
+                                            </label>
+                                            <select @bind="filtroTipo" class="filter-select">
+                                                <option value="">Todos los tipos</option>
+                                                <option value="Contado">Contado</option>
+                                                <option value="Crédito">Crédito</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Estado -->
+                                        <div class="filter-item">
+                                            <label class="filter-label">
+                                                <i class="fas fa-info-circle"></i> Estado
+                                            </label>
+                                            <select @bind="filtroEstado" class="filter-select">
+                                                <option value="">Todos los estados</option>
+                                                <option value="Pagado">Pagado</option>
+                                                <option value="Pendiente">Pendiente</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Solo Pendientes -->
+                                        <div class="filter-item">
+                                            <label class="filter-label">
+                                                <i class="fas fa-clock"></i> Solo Pendientes
+                                            </label>
+                                            <label class="toggle-switch">
+                                                <input type="checkbox" @bind="filtroSoloPendientes" />
+                                                <span class="toggle-slider round"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pie de página con botones -->
+                            <div class="filters-footer">
+                                <button class="btn btn-outline" @onclick="ResetearFiltros">
+                                    <i class="fas fa-undo"></i> Limpiar Filtros
+                                </button>
+                                <button class="btn btn-primary" @onclick="AplicarFiltros">
+                                    <i class="fas fa-check"></i> Aplicar Filtros
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+            <div class="metrics-panel">
+                <div class="metric-card total">
+                    <div class="metric-icon">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                    </div>
+                    <div class="metric-content">
+                        <div class="metric-value">@totalFacturas</div>
+                        <div class="metric-label">Facturas totales</div>
+                        <div class="metric-trend @GetTrendClass(facturaTrend)">
+                            <i class="fas @(facturaTrend > 0 ? "fa-arrow-up" : "fa-arrow-down")"></i>
+                            @Math.Abs(facturaTrend)%
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-card pending">
+                    <div class="metric-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="metric-content">
+                        <div class="metric-value">@facturasPendientes</div>
+                        <div class="metric-label">Por cobrar</div>
+                        <div class="metric-amount">@totalPendiente.ToString("C")</div>
+                    </div>
+                </div>
+
+                <div class="metric-card paid">
+                    <div class="metric-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="metric-content">
+                        <div class="metric-value">@facturasPagadas</div>
+                        <div class="metric-label">Pagadas</div>
+                        <div class="metric-subtext">Últimos 30 días: @facturasPagadasUltimoMes</div>
+                    </div>
+                </div>
+
+                <div class="metric-card revenue">
+                    <div class="metric-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="metric-content">
+                        <div class="metric-value">@totalFacturado.ToString("C")</div>
+                        <div class="metric-label">Facturación total</div>
+                        <div class="progress-container">
+                            <div class="progress-bar" style="width: @(porcentajePagado + "%")"></div>
+                            <span>@porcentajePagado% pagado</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if (facturas == null)
+            {
+                <div class="loading-container">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Cargando facturas...</p>
+                </div>
+            }
+            else if (facturas.Count == 0)
+            {
+                <div class="empty-state">
+                    <i class="fas fa-file-invoice"></i>
+                    <p>No hay facturas registradas</p>
+                </div>
+            }
+            else
+            {
+                <div class="invoices-table-container">
+                    <table class="invoices-table">
                         <thead>
                             <tr>
-                                <th>Código</th>
-                                <th>Descripción</th>
-                                <th>Precio Unitario</th>
-                                <th>Cantidad</th>
-                                <th>Subtotal</th>
-                                <th>Acciones</th>
+                                <th><i class="fas fa-hashtag"></i> Código</th>
+                                <th><i class="fas fa-user"></i> Cliente</th>
+                                <th><i class="fas fa-calendar"></i> Fecha</th>
+                                <th><i class="fas fa-money-bill-wave"></i> Total</th>
+                                <th><i class="fas fa-wallet"></i> Saldo</th>
+                                <th><i class="fas fa-tag"></i> Tipo</th>
+                                <th><i class="fas fa-cog"></i> Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var detalle in detallesFactura)
+                            @foreach (var f in facturas)
                             {
                                 <tr>
-                                    <td>@detalle.codigoProducto</td>
-                                    <td>@(productos.FirstOrDefault(p => p.codigoProducto == detalle.codigoProducto)?.descripcion)</td>
-                                    <td>@detalle.precioUnitario.ToString("F2")</td>
-                                    <td>@detalle.cantidad</td>
-                                    <td>@((detalle.cantidad * detalle.precioUnitario).ToString("F2"))</td>
-                                    <td>
-                                        <button type="button" class="btn btn-sm btn-danger"
-                                                @onclick="@(() => EliminarProducto(detalle.codigoProducto))">
-                                            Eliminar
+                                    <td>@f.codigoFactura</td>
+                                    <td>@(clientes.FirstOrDefault(c => c.codigoCliente == f.codigoCliente)?.nombre) @(clientes.FirstOrDefault(c => c.codigoCliente == f.codigoCliente)?.apellido)</td>
+                                    <td>@f.fecha.ToShortDateString()</td>
+                                    <td>@f.totalFactura.ToString("F2")</td>
+                                    <td class="@(f.saldo > 0 ? "text-warning" : "text-success")">@f.saldo.ToString("F2")</td>
+                                    <td><span class="badge @(f.tipo == "Contado" ? "badge-primary" : "badge-secondary")">@f.tipo</span></td>
+                                    <td class="actions-cell">
+                                        <button class="btn-edit" @onclick="() => EditarFactura(f)">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="btn-delete" @onclick="() => EliminarFactura(f.codigoFactura)">
+                                            <i class="fas fa-trash-alt"></i>
                                         </button>
                                     </td>
                                 </tr>
                             }
                         </tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="4" class="text-end"><strong>Total:</strong></td>
-                                <td><strong>@detallesFactura.Sum(d => d.cantidad * d.precioUnitario).ToString("F2")</strong></td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
                     </table>
                 </div>
             }
-
-            <button type="submit" class="btn btn-primary mt-2">@(editando ? "Actualizar" : "Registrar")</button>
-            @if (editando)
-            {
-                <button type="button" class="btn btn-secondary mt-2 ms-2" @onclick="CancelarEdicion">Cancelar</button>
-            }
-
-            <button type="button" class="btn btn-success mt-3" @onclick="MostrarModalAbono">Abono</button>
-        </EditForm>
-
-        @if (mostrarModalAbono)
-        {
-            <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-                <div class="modal-dialog">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title">Registrar Abono</h5>
-                            <button type="button" class="btn-close" @onclick="CerrarModalAbono"></button>
-                        </div>
-                        <div class="modal-body">
-                            <EditForm Model="abono" OnValidSubmit="GuardarAbono">
-                                <div class="form-group">
-                                    <label>Factura</label>
-                                    <!-- Selector de factura -->
-                                    <select class="form-control" @bind="selectedCodigoFactura">
-                                        <option disabled value="0">Seleccione una factura</option>
-                                        @if (facturas != null)
-                                        {
-                                            foreach (var factura in facturas)
-                                            {
-                                                <option value="@factura.codigoFactura">@factura.codigoFactura</option>
-                                            }
-                                        }
-                                    </select>
+        </div>
+    }
+</div>
 
 
-
-                                    <!-- Campos de solo lectura -->
-                                    <div class="form-group">
-                                        <label>Total de Factura</label>
-                                        <input class="form-control" value="@totalFactura" readonly />
-                                    </div>
-
-                                    <div class="form-group">
-                                        <label>Saldo Actual</label>
-                                        <input class="form-control" value="@saldoActual" readonly />
-                                    </div>
-
-                                </div>
-                                <div class="form-group">
-                                    <label>Abono</label>
-                                    <InputNumber @bind-Value="abono.montoAbono" class="form-control" @oninput="ActualizarEstadoFactura" />
-                                </div>
-
-                                <div class="form-group">
-                                    <label>Estado</label>
-                                    <input class="form-control" value="@estadoFactura" readonly />
-                                </div>
-
-                                <button class="btn btn-primary" type="submit">Guardar Abono</button>
-                            </EditForm>
-
-                        </div>
-                    </div>
-                </div>
-            </div>
-        }
-    </div>
-}
-
-@if (activeTab == "historial")
-{
-    <div class="factura-lista">
-        <h4>Lista de Facturas</h4>
-        @if (facturas == null)
-        {
-            <p><em>Cargando...</em></p>
-        }
-        else if (facturas.Count == 0)
-        {
-            <p>No hay facturas registradas.</p>
-        }
-        else
-        {
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Código</th>
-                        <th>Cliente</th>
-                        <th>Fecha</th>
-                        <th>Total</th>
-                        <th>Saldo</th>
-                        <th>Tipo</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var f in facturas)
-                    {
-                        <tr>
-                            <td>@f.codigoFactura</td>
-                            <td>@(clientes.FirstOrDefault(c => c.codigoCliente == f.codigoCliente)?.nombre) @(clientes.FirstOrDefault(c => c.codigoCliente == f.codigoCliente)?.apellido)</td>
-                            <td>@f.fecha.ToShortDateString()</td>
-                            <td>@f.totalFactura.ToString("F2")</td>
-                            <td>@f.saldo.ToString("F2")</td>
-                            <td>@f.tipo</td>
-                            <td>
-                                <button class="btn btn-sm btn-warning" @onclick="() => EditarFactura(f)">Editar</button>
-                                <button class="btn btn-sm btn-danger ms-1" @onclick="() => EliminarFactura(f.codigoFactura)">Eliminar</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        }
-    </div>
-}
 
 @code {
+
+
+    // Variables para los filtros
+    private bool mostrarFiltros = false;
+    private int filtroCodigoCliente = 0;
+    private DateTime? filtroFechaDesde;
+    private DateTime? filtroFechaHasta;
+    private decimal? filtroMontoMinimo;
+    private decimal? filtroMontoMaximo;
+    private string filtroTipo = "";
+    private string filtroEstado = "";
+    private bool filtroSoloPendientes = false;
+
+    private int totalFacturas = 0;
+    private int facturasPendientes = 0;
+    private int facturasPagadas = 0;
+    private int facturasPagadasUltimoMes = 0;
+    private decimal totalFacturado = 0;
+    private decimal totalPendiente = 0;
+    private decimal porcentajePagado = 0;
+    private int facturaTrend = 0; 
+    private int totalPurchases = 0;
+    private int pendingInvoices = 0;
+    private int paidInvoices = 0;
+    private decimal totalAmount = 0.00m;
     private List<Producto> productos = new();
-    private Producto productoSeleccionado = new();
+    private Producto productoSeleccionado = new(); 
     private DetalleFactura detalleFactura = new();
     private List<DetalleFactura> detallesFactura = new();
 
@@ -269,7 +1220,11 @@
 
     private List<Cliente> clientes = new();
     private List<Factura> facturas;
-    private Factura factura = new();
+    private Factura factura = new Factura
+        {
+            fecha = DateTime.Today,
+            tipo = "Crédito" // Valor por defecto
+        };
     private bool editando = false;
     private string activeTab = "facturacion";
 
@@ -284,6 +1239,81 @@
     private decimal montoFacturaSeleccionada;
     private decimal saldoFacturaSeleccionada;
 
+
+    private void ToggleFiltros()
+    {
+        mostrarFiltros = !mostrarFiltros;
+    }
+
+
+    private async Task AplicarFiltros()
+    {
+        try
+        {
+            // Construir URL con parámetros de filtro
+            var url = $"api/Factura/GetFacturasFiltradas?";
+
+            if (filtroCodigoCliente > 0)
+                url += $"codigoCliente={filtroCodigoCliente}&";
+
+            if (filtroFechaDesde.HasValue)
+                url += $"fechaDesde={filtroFechaDesde.Value:yyyy-MM-dd}&";
+
+            if (filtroFechaHasta.HasValue)
+                url += $"fechaHasta={filtroFechaHasta.Value:yyyy-MM-dd}&";
+
+            if (filtroMontoMinimo.HasValue)
+                url += $"montoMinimo={filtroMontoMinimo}&";
+
+            if (filtroMontoMaximo.HasValue)
+                url += $"montoMaximo={filtroMontoMaximo}&";
+
+            if (!string.IsNullOrEmpty(filtroTipo))
+                url += $"tipo={filtroTipo}&";
+
+            if (!string.IsNullOrEmpty(filtroEstado))
+                url += $"estado={filtroEstado}&";
+
+            if (filtroSoloPendientes)
+                url += $"pendientes=true&";
+
+            // Eliminar el último & si existe
+            if (url.EndsWith("&"))
+                url = url[..^1];
+
+            facturas = await Http.GetFromJsonAsync<List<Factura>>(url);
+            await CalcularMetricas();
+
+            // Cerrar el panel de filtros
+            mostrarFiltros = false;
+
+            // Activar la pestaña de historial si no está activa
+            if (activeTab != "historial")
+            {
+                activeTab = "historial";
+                // Opcional: desplazar la vista hacia la sección de historial
+                await JS.InvokeVoidAsync("scrollToElement", "historial-section");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al aplicar filtros: {ex.Message}");
+        }
+    }
+    private async Task ResetearFiltros()
+    {
+        filtroCodigoCliente = 0;
+        filtroFechaDesde = null;
+        filtroFechaHasta = null;
+        filtroMontoMinimo = null;
+        filtroMontoMaximo = null;
+        filtroTipo = "";
+        filtroEstado = "";
+        filtroSoloPendientes = false;
+
+        await CargarFacturas();
+    }
+
     private void CerrarModalExito()
     {
         mostrarModalExito = false;
@@ -296,6 +1326,60 @@
         await CargarProductos();
         await CargarClientes();
         await CargarFacturas();
+        await LoadSummaryData();
+        await CalcularMetricas();
+    }
+
+
+    private async Task CalcularMetricas()
+    {
+        var hoy = DateTime.Today;
+        var inicioMesActual = new DateTime(hoy.Year, hoy.Month, 1);
+        var inicioMesAnterior = inicioMesActual.AddMonths(-1);
+
+        var facturasMesActual = facturas.Where(f => f.fecha >= inicioMesActual).ToList();
+        var facturasMesAnterior = facturas.Where(f => f.fecha >= inicioMesAnterior && f.fecha < inicioMesActual).ToList();
+
+        totalFacturas = facturas.Count;
+        facturasPendientes = facturas.Count(f => f.estado == "Pendiente");
+        facturasPagadas = facturas.Count(f => f.estado == "Pagado");
+        facturasPagadasUltimoMes = facturas.Count(f => f.estado == "Pagado" && f.fecha >= inicioMesActual);
+
+        totalFacturado = facturas.Sum(f => f.totalFactura);
+        totalPendiente = facturas.Where(f => f.estado == "Pendiente").Sum(f => f.saldo);
+
+        porcentajePagado = totalFacturas > 0 ?
+            Math.Round((decimal)facturasPagadas / totalFacturas * 100, 1) : 0;
+
+        // Calcular tendencia
+        var countMesActual = facturasMesActual.Count;
+        var countMesAnterior = facturasMesAnterior.Count;
+
+        if (countMesAnterior > 0)
+        {
+            facturaTrend = (int)Math.Round(
+                ((decimal)(countMesActual - countMesAnterior) / countMesAnterior) * 100,
+                0
+            );
+        }
+
+        StateHasChanged();
+    }
+
+    private string GetTrendClass(int trend)
+    {
+        return trend >= 0 ? "trend-up" : "trend-down";
+    }
+
+    private async Task LoadSummaryData()
+    {
+        // Obtener datos de la API
+        var facturas = await Http.GetFromJsonAsync<List<Factura>>("api/Factura/GetAllFacturas") ?? new List<Factura>();
+
+        totalPurchases = facturas.Count;
+        pendingInvoices = facturas.Count(f => f.estado == "Pendiente");
+        paidInvoices = facturas.Count(f => f.estado == "Pagado");
+        totalAmount = facturas.Sum(f => f.totalFactura);
     }
 
     private async Task CargarProductos()
@@ -332,7 +1416,7 @@
             return;
 
         var detalleExistente = detallesFactura.FirstOrDefault(d => d.codigoProducto == productoSeleccionado.codigoProducto);
-
+        
         if (detalleExistente != null)
         {
             detalleExistente.cantidad += detalleFactura.cantidad;
@@ -341,21 +1425,19 @@
         else
         {
             detallesFactura.Add(new DetalleFactura
-                {
-                    codigoProducto = productoSeleccionado.codigoProducto,
-                    cantidad = detalleFactura.cantidad,
-                    precioUnitario = productoSeleccionado.costo,
-                    subtotal = detalleFactura.cantidad * productoSeleccionado.costo
-                });
+            {
+                codigoProducto = productoSeleccionado.codigoProducto,
+                cantidad = detalleFactura.cantidad,
+                precioUnitario = productoSeleccionado.costo,
+                subtotal = detalleFactura.cantidad * productoSeleccionado.costo
+            });
         }
 
         // Actualizar totales
         factura.totalFactura = detallesFactura.Sum(d => d.subtotal);
         factura.saldo = factura.totalFactura;
-
-        // Resetear para nuevo producto
-        productoSeleccionado = new Producto();
-        detalleFactura = new DetalleFactura();
+        
+       
     }
 
     private void EliminarProducto(int codigoProducto)
@@ -373,6 +1455,30 @@
     {
         try
         {
+            // Validaciones básicas (las mismas que antes)
+            if (factura.codigoCliente == 0)
+            {
+                await JS.InvokeVoidAsync("alert", "Debe seleccionar un cliente");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(factura.tipo))
+            {
+                await JS.InvokeVoidAsync("alert", "Debe seleccionar un tipo de factura");
+                return;
+            }
+
+            if (!detallesFactura.Any())
+            {
+                await JS.InvokeVoidAsync("alert", "Debe agregar al menos un producto a la factura");
+                return;
+            }
+
+            // Cálculos (los mismos que antes)
+            factura.totalFactura = detallesFactura.Sum(d => d.cantidad * d.precioUnitario);
+            factura.saldo = factura.tipo == "Contado" ? 0 : factura.totalFactura;
+            factura.estado = factura.tipo == "Contado" ? "Pagado" : "Pendiente";
+
             var facturaConDetalles = new FacturaConDetalles
                 {
                     Factura = factura,
@@ -414,12 +1520,34 @@
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                await JS.InvokeVoidAsync("alert", $"Error al guardar: {errorContent}");
+
+                try
+                {
+                    // Usando Newtonsoft.Json para parsear el error
+                   var errorObj = JsonDocument.Parse(errorContent);
+                    if (errorObj.RootElement.TryGetProperty("errors", out var errors))
+                    {
+                        var errorMessages = new List<string>();
+                        foreach (var error in errors.EnumerateArray())
+                        {
+                            errorMessages.Add(error.GetString());
+                        }
+                        await JS.InvokeVoidAsync("alert", $"Errores de validación:\n{string.Join("\n", errorMessages)}");
+                    }
+                    else
+                    {
+                        await JS.InvokeVoidAsync("alert", $"Error al guardar: {errorContent}");
+                    }
+                }
+                catch
+                {
+                    await JS.InvokeVoidAsync("alert", $"Error al guardar: {errorContent}");
+                }
             }
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Ocurrió un error: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error crítico: {ex.Message}");
         }
     }
 
@@ -443,33 +1571,77 @@
     private string errorMessage;
     private async Task GuardarAbono()
     {
-        if (abono.codigoFactura == 0)
-        {
-            errorMessage = "Debe seleccionar una factura válida.";
-            return;
-        }
         try
         {
-            var response = await Http.PostAsJsonAsync("http://localhost:5282/api/abono/registrar-abono", abono);
+            // Validaciones básicas
+            if (abono.codigoFactura == 0)
+            {
+                errorMessage = "Debe seleccionar una factura válida.";
+                return;
+            }
+
+            if (abono.montoAbono <= 0)
+            {
+                errorMessage = "El monto del abono debe ser mayor que cero.";
+                return;
+            }
+
+            if (abono.montoAbono > saldoActual)
+            {
+                errorMessage = "El monto del abono excede el saldo pendiente.";
+                return;
+            }
+
+            // Configurar fecha del abono
+            abono.fechaAbono = DateTime.Now;
+
+            // Registrar el abono en la base de datos
+            var response = await Http.PostAsJsonAsync("api/abono/registrar-abono", abono);
 
             if (response.IsSuccessStatusCode)
             {
-                saldoFactura -= abono.montoAbono;
-                estadoFactura = saldoFactura <= 0 ? "Pagado" : "Pendiente";
+                // Actualizar los valores locales
+                saldoActual -= abono.montoAbono;
+                estadoFactura = saldoActual <= 0 ? "Pagado" : "Pendiente";
+
+                // Actualizar la lista de facturas (remover si está pagada)
+                if (estadoFactura == "Pagado")
+                {
+                    facturas.RemoveAll(f => f.codigoFactura == abono.codigoFactura);
+                }
+                else
+                {
+                    // Actualizar el saldo en la lista de facturas
+                    var factura = facturas.FirstOrDefault(f => f.codigoFactura == abono.codigoFactura);
+                    if (factura != null)
+                    {
+                        factura.saldo = saldoActual;
+                    }
+                }
+
+                // Mostrar mensaje de éxito
+                mensajeExito = "Abono registrado exitosamente";
+                mostrarModalExito = true;
+
+                // Limpiar el formulario
                 abono = new Abono();
-                errorMessage = string.Empty;
+
+                // Forzar actualización de la UI
+                StateHasChanged();
+
+                // Cerrar el modal después de 2 segundos
+                await Task.Delay(2000);
+                mostrarModalExito = false;
+                mostrarModalAbono = false;
             }
             else
             {
-                errorMessage = $"Error al guardar abono: {response.StatusCode}";
-                var content = await response.Content.ReadAsStringAsync();
-                if (!string.IsNullOrEmpty(content))
-                    errorMessage += $", Detalle: {content}";
+                errorMessage = await response.Content.ReadAsStringAsync();
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Excepción: {ex.Message}";
+            errorMessage = $"Error al registrar el abono: {ex.Message}";
         }
     }
     private int selectedCodigoFactura
@@ -489,19 +1661,23 @@
     {
         try
         {
-            var factura = await Http.GetFromJsonAsync<Factura>($"http://localhost:5282/api/factura/GetFacturaPorCodigo/{codigoFactura}");
+            var factura = await Http.GetFromJsonAsync<Factura>($"api/factura/GetFacturaPorCodigo/{codigoFactura}");
 
             if (factura != null)
             {
                 totalFactura = factura.totalFactura;
                 saldoActual = factura.saldo;
-                estadoFactura = saldoActual <= 0 ? "Pagado" : "Pendiente";
+
+                // Determinar estado (considerando que algunos registros podrían no tener el campo estado)
+                estadoFactura = factura.saldo <= 0 ? "Pagado" :
+                              !string.IsNullOrEmpty(factura.estado) ? factura.estado : "Pendiente";
+
                 StateHasChanged();
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Error al obtener factura: " + ex.Message);
+            Console.WriteLine($"Error al obtener factura: {ex.Message}");
         }
     }
 
@@ -509,34 +1685,53 @@
 
     private void ActualizarEstadoFactura(ChangeEventArgs e)
     {
-        if (decimal.TryParse(e.Value?.ToString(), out decimal abonoActual))
+        if (decimal.TryParse(e.Value?.ToString(), out decimal montoAbono))
         {
-            abono.montoAbono = abonoActual;
-            var nuevoSaldo = saldoFactura - abono.montoAbono;
+            abono.montoAbono = montoAbono;
+            var nuevoSaldo = saldoActual - abono.montoAbono;
             estadoFactura = nuevoSaldo <= 0 ? "Pagado" : "Pendiente";
+            StateHasChanged();
         }
     }
 
 
+    // private async Task CargarFacturas()
+    // {
+    //     facturas = await Http.GetFromJsonAsync<List<Factura>>("api/factura/GetAllFacturas");
+    // }
+
     private async Task CargarFacturas()
     {
-        facturas = await Http.GetFromJsonAsync<List<Factura>>("http://localhost:5282/api/factura/GetAllFacturas");
+        try
+        {
+            // Cargar todas las facturas sin filtrar
+            facturas = await Http.GetFromJsonAsync<List<Factura>>("api/factura/GetAllFacturas")
+                       ?? new List<Factura>();
 
+            // Opcional: Ordenar por fecha descendente
+            facturas = facturas.OrderByDescending(f => f.fecha).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar facturas: {ex.Message}");
+            facturas = new List<Factura>();
+            await JS.InvokeVoidAsync("alert", "Error al cargar el historial de facturas");
+        }
     }
 
-
+   
 
     private void EditarFactura(Factura f)
     {
         factura = new Factura
-            {
-                codigoFactura = f.codigoFactura,
-                codigoCliente = f.codigoCliente,
-                fecha = f.fecha,
-                totalFactura = f.totalFactura,
-                saldo = f.saldo,
-                tipo = f.tipo
-            };
+        {
+            codigoFactura = f.codigoFactura,
+            codigoCliente = f.codigoCliente,
+            fecha = f.fecha,
+            totalFactura = f.totalFactura,
+            saldo = f.saldo,
+            tipo = f.tipo
+        };
         editando = true;
     }
 
@@ -569,143 +1764,820 @@
         public int codigoFactura { get; set; }
         public string message { get; set; }
     }
+
+    private async Task UpdateSummary()
+    {
+        var facturas = await Http.GetFromJsonAsync<List<Factura>>("api/Factura/GetAllFacturas") ?? new List<Factura>();
+
+        totalPurchases = facturas.Count;
+        pendingInvoices = facturas.Count(f => f.estado == "Pendiente");
+        paidInvoices = facturas.Count(f => f.estado == "Pagado");
+        totalAmount = facturas.Sum(f => f.totalFactura);
+
+        StateHasChanged(); // Forzar actualización de la UI
+    }
 }
 
 
 <style>
-    h3 {
-        color: #1A2E5A;
-        margin-bottom: 20px;
-        font-weight: 600;
-        border-bottom: 2px solid #E30613;
-        padding-bottom: 8px;
-        display: inline-block;
-    }
-    /* Estilos personalizados para Gestión de Facturas */
-    .factura-container {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        padding: 20px;
-        background-color: #f5f7fa;
-        min-height: 100vh;
+    /* Estilos mejorados con tema azul y blanco */
+    :root {
+        --primary-color: #1976D2;
+        --primary-dark: #1565C0;
+        --primary-light: #E3F2FD;
+        --secondary-color: #FFA000;
+        --success-color: #4CAF50;
+        --danger-color: #F44336;
+        --warning-color: #FFC107;
+        --text-color: #333;
+        --text-light: #777;
+        --border-color: #E0E0E0;
+        --bg-color: #F5F9FF;
+        --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     }
 
-    .factura-formulario {
-        background-color: #ffffff;
-        padding: 25px;
+    /* Estilos generales */
+    .invoice-container {
+        font-family: 'Segoe UI', 'Roboto', sans-serif;
+        color: var(--text-color);
+        background-color: var(--bg-color);
+        min-height: 100vh;
+        padding: 20px;
+    }
+
+    .invoice-header {
+        margin-bottom: 30px;
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+        .invoice-header h2 {
+            color: var(--primary-dark);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0;
+        }
+
+    .invoice-tabs {
+        display: flex;
+        gap: 10px;
+        border-bottom: 2px solid var(--border-color);
+        padding-bottom: 5px;
+    }
+
+        .invoice-tabs button {
+            background: none;
+            border: none;
+            padding: 10px 20px;
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--text-light);
+            cursor: pointer;
+            border-radius: 6px 6px 0 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+            .invoice-tabs button i {
+                font-size: 16px;
+            }
+
+            .invoice-tabs button.active {
+                color: var(--primary-color);
+                background-color: var(--primary-light);
+                position: relative;
+            }
+
+                .invoice-tabs button.active::after {
+                    content: '';
+                    position: absolute;
+                    bottom: -7px;
+                    left: 0;
+                    right: 0;
+                    height: 2px;
+                    background: var(--primary-color);
+                }
+
+    /* Tarjeta de factura */
+    .invoice-card {
+        background: white;
         border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        box-shadow: var(--card-shadow);
+        padding: 25px;
         margin-bottom: 30px;
     }
 
-
-
-        .factura-formulario label {
-            font-weight: 500;
-            margin-top: 15px;
-            color: #1A2E5A;
-        }
-
-        .factura-formulario .form-control {
-            margin-top: 5px;
-            margin-bottom: 15px;
-            padding: 8px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            font-size: 14px;
-        }
-
-        .factura-formulario button {
-            margin-top: 10px;
-            font-weight: 500;
-            padding: 10px 20px;
-            border-radius: 6px;
-            border: none;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-
-        .factura-formulario .btn-primary {
-            background-color: #1A2E5A;
-            color: #fff;
-        }
-
-            .factura-formulario .btn-primary:hover {
-                background-color: #153063;
-            }
-
-        .factura-formulario .btn-secondary {
-            background-color: #E30613;
-            color: #fff;
-        }
-
-            .factura-formulario .btn-secondary:hover {
-                background-color: #b4040d;
-            }
-
-    /* Estilos para la tabla de facturas */
-    .factura-lista h4 {
-        color: #1A2E5A;
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
         margin-bottom: 20px;
-        font-weight: 600;
     }
 
-    .table {
-        width: 100%;
-        border-collapse: collapse;
-        background-color: #ffffff;
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-    }
-
-        .table thead {
-            background-color: #1A2E5A;
-            color: white;
+        .card-header h3 {
+            color: var(--primary-dark);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0;
         }
 
-        .table th, .table td {
-            padding: 12px 15px;
-            text-align: left;
+    .search-box {
+        position: relative;
+        width: 300px;
+    }
+
+        .search-box i {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-light);
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 15px 10px 40px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
             font-size: 14px;
-            border-bottom: 1px solid #ddd;
+            transition: all 0.3s;
         }
 
-    .table-striped tbody tr:nth-child(odd) {
-        background-color: #f2f2f2;
+            .search-box input:focus {
+                outline: none;
+                border-color: var(--primary-color);
+                box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+            }
+
+    /* Secciones del formulario */
+    .form-section {
+        margin-bottom: 25px;
     }
 
-    .table button {
-        padding: 6px 12px;
+        .form-section h4 {
+            color: var(--primary-dark);
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+    /* Grid de formulario */
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 20px;
+    }
+
+    .product-form-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr 1fr auto;
+        gap: 15px;
+        align-items: flex-end;
+    }
+
+    /* Grupos de entrada */
+    .input-group {
+        margin-bottom: 15px;
+    }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+            .input-group label i {
+                font-size: 14px;
+                color: var(--primary-color);
+            }
+
+    .input-style, .select-style {
+        width: 100%;
+        padding: 10px 15px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        font-size: 14px;
+        transition: all 0.3s;
+        background-color: white;
+    }
+
+        .input-style:focus, .select-style:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+        }
+
+    /* Divisor */
+    .divider-blue {
+        height: 1px;
+        background: linear-gradient(to right, transparent, var(--primary-color), transparent);
+        margin: 25px 0;
+        opacity: 0.3;
+    }
+
+    /* Botones */
+    .btn-add-product {
+        background-color: var(--primary-color);
+        color: white;
         border: none;
-        border-radius: 5px;
+        border-radius: 6px;
+        padding: 10px 15px;
+        font-size: 14px;
         font-weight: 500;
         cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: background-color 0.3s;
+        height: 40px;
+        margin-bottom: 15px;
+    }
+
+        .btn-add-product:hover {
+            background-color: var(--primary-dark);
+        }
+
+    .form-actions {
+        display: flex;
+        gap: 15px;
+        margin-top: 30px;
+        flex-wrap: wrap;
+    }
+
+    .btn-save {
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 12px 25px;
+        font-size: 15px;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
         transition: background-color 0.3s;
     }
 
-    .table .btn-warning {
-        background-color: #f39c12;
-        color: white;
-    }
-
-        .table .btn-warning:hover {
-            background-color: #d68910;
+        .btn-save:hover {
+            background-color: var(--primary-dark);
         }
 
-    .table .btn-danger {
-        background-color: #e74c3c;
-        color: white;
-    }
-
-        .table .btn-danger:hover {
-            background-color: #c0392b;
-        }
-
-    /* Estilo de mensaje de carga y vacío */
-    p {
-        color: #666;
+    .btn-cancel {
+        background-color: #f5f5f5;
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 12px 25px;
         font-size: 15px;
-        margin-top: 15px;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: all 0.3s;
     }
+
+        .btn-cancel:hover {
+            background-color: #e0e0e0;
+        }
+
+    .btn-payment {
+        background-color: var(--success-color);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 12px 25px;
+        font-size: 15px;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: background-color 0.3s;
+        margin-left: auto;
+    }
+
+        .btn-payment:hover {
+            background-color: #3d8b40;
+        }
+
+    /* Tablas */
+    .products-table-container, .invoices-table-container {
+        overflow-x: auto;
+        margin-top: 20px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+    }
+
+    .products-table, .invoices-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+        .products-table th, .invoices-table th {
+            background-color: var(--primary-light);
+            color: var(--primary-dark);
+            font-weight: 500;
+            padding: 15px;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        .products-table td, .invoices-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .products-table tr:hover, .invoices-table tr:hover {
+            background-color: #f9f9f9;
+        }
+
+        .products-table tfoot td {
+            font-weight: 500;
+            background-color: #f5f5f5;
+        }
+
+    .text-right {
+        text-align: right;
+    }
+
+    .text-warning {
+        color: var(--warning-color);
+        font-weight: 500;
+    }
+
+    .text-success {
+        color: var(--success-color);
+        font-weight: 500;
+    }
+
+    /* Botones de acción */
+    .btn-remove-product, .btn-edit, .btn-delete {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 5px 8px;
+        border-radius: 4px;
+        transition: all 0.2s;
+    }
+
+    .btn-remove-product {
+        color: var(--danger-color);
+    }
+
+        .btn-remove-product:hover {
+            background-color: #ffebee;
+        }
+
+    .btn-edit {
+        color: var(--primary-color);
+    }
+
+        .btn-edit:hover {
+            background-color: var(--primary-light);
+        }
+
+    .btn-delete {
+        color: var(--danger-color);
+    }
+
+        .btn-delete:hover {
+            background-color: #ffebee;
+        }
+
+    .actions-cell {
+        display: flex;
+        gap: 8px;
+    }
+
+    /* Badges */
+    .badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .badge-primary {
+        background-color: var(--primary-light);
+        color: var(--primary-dark);
+    }
+
+    .badge-secondary {
+        background-color: #FFF3E0;
+        color: #E65100;
+    }
+
+    /* Modal de abono */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .payment-modal {
+        background-color: white;
+        border-radius: 10px;
+        width: 500px;
+        max-width: 95%;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        overflow: hidden;
+    }
+
+    .modal-header {
+        padding: 20px;
+        background-color: var(--primary-color);
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+        .modal-header h3 {
+            margin: 0;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+    .close-modal {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 5px;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 25px;
+    }
+
+    .btn-confirm-payment {
+        background-color: var(--success-color);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 12px 25px;
+        font-size: 15px;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: background-color 0.3s;
+    }
+
+        .btn-confirm-payment:hover {
+            background-color: #3d8b40;
+        }
+
+    /* Estados */
+    .status-paid {
+        color: var(--success-color);
+        font-weight: 500;
+    }
+
+    .status-pending {
+        color: var(--warning-color);
+        font-weight: 500;
+    }
+
+    /* Mensajes de error */
+    .error-message {
+        background-color: #ffebee;
+        color: var(--danger-color);
+        padding: 12px 15px;
+        border-radius: 6px;
+        margin-top: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+    }
+
+    /* Estados vacíos/carga */
+    .loading-container, .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        color: var(--text-light);
+        text-align: center;
+    }
+
+        .loading-container i {
+            font-size: 30px;
+            margin-bottom: 15px;
+            color: var(--primary-color);
+        }
+
+        .empty-state i {
+            font-size: 40px;
+            margin-bottom: 15px;
+            color: var(--primary-light);
+        }
+
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+
+    .summary-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px 15px;
+        text-align: center;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+        transition: transform 0.3s ease;
+    }
+
+        .summary-card:hover {
+            transform: translateY(-5px);
+        }
+
+    .summary-icon {
+        width: 50px;
+        height: 50px;
+        margin: 0 auto 12px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+    }
+
+        .summary-icon.total {
+            background-color: rgba(26, 46, 90, 0.1);
+            color: #1A2E5A;
+        }
+
+        .summary-icon.pending {
+            background-color: rgba(255, 193, 7, 0.1);
+            color: #FFC107;
+        }
+
+        .summary-icon.paid {
+            background-color: rgba(76, 175, 80, 0.1);
+            color: #4CAF50;
+        }
+
+        .summary-icon.amount {
+            background-color: rgba(227, 6, 19, 0.1);
+            color: #E30613;
+        }
+
+    .summary-value {
+        font-size: 1.8rem;
+        font-weight: bold;
+        color: #1A2E5A;
+        margin-bottom: 5px;
+    }
+
+    .summary-label {
+        font-size: 0.95rem;
+        color: #666;
+        font-weight: 500;
+    }
+
+    /* Responsive */
+    @@media (max-width: 768px) {
+        .summary-cards {
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .summary-cards {
+            grid-template-columns: 1fr;
+        }
+
+        .summary-card {
+            padding: 15px 10px;
+        }
+
+        .summary-value {
+            font-size: 1.5rem;
+        }
+    }
+
+    .metrics-panel {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .metric-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        transition: all 0.3s ease;
+        border-left: 4px solid;
+        display: flex;
+        gap: 1.2rem;
+        align-items: center;
+    }
+
+        .metric-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+    .metric-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+    }
+
+    .metric-content {
+        flex: 1;
+    }
+
+    .metric-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        line-height: 1;
+        margin-bottom: 0.2rem;
+    }
+
+    .metric-label {
+        font-size: 0.9rem;
+        color: #64748B;
+        font-weight: 500;
+        margin-bottom: 0.3rem;
+    }
+
+    .metric-subtext, .metric-amount {
+        font-size: 0.8rem;
+        color: #94A3B8;
+        font-weight: 400;
+    }
+
+    .metric-trend {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 12px;
+        display: inline-block;
+        margin-top: 0.3rem;
+    }
+
+    .progress-container {
+        margin-top: 0.5rem;
+        height: 6px;
+        background: #F1F5F9;
+        border-radius: 3px;
+        position: relative;
+    }
+
+    .progress-bar {
+        height: 100%;
+        border-radius: 3px;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+
+    /* Colores específicos para cada tarjeta */
+    .metric-card.total {
+        border-left-color: #3B82F6;
+    }
+
+        .metric-card.total .metric-icon {
+            background-color: #EFF6FF;
+            color: #3B82F6;
+        }
+
+        .metric-card.total .metric-value {
+            color: #1E40AF;
+        }
+
+    .metric-card.pending {
+        border-left-color: #F59E0B;
+    }
+
+        .metric-card.pending .metric-icon {
+            background-color: #FEF3C7;
+            color: #F59E0B;
+        }
+
+        .metric-card.pending .metric-value {
+            color: #92400E;
+        }
+
+        .metric-card.pending .progress-bar {
+            background-color: #F59E0B;
+        }
+
+    .metric-card.paid {
+        border-left-color: #10B981;
+    }
+
+        .metric-card.paid .metric-icon {
+            background-color: #D1FAE5;
+            color: #10B981;
+        }
+
+        .metric-card.paid .metric-value {
+            color: #065F46;
+        }
+
+    .metric-card.revenue {
+        border-left-color: #8B5CF6;
+    }
+
+        .metric-card.revenue .metric-icon {
+            background-color: #EDE9FE;
+            color: #8B5CF6;
+        }
+
+        .metric-card.revenue .metric-value {
+            color: #5B21B6;
+        }
+
+        .metric-card.revenue .progress-bar {
+            background-color: #8B5CF6;
+        }
+
+    /* Indicadores de tendencia */
+    .trend-up {
+        background-color: #D1FAE5;
+        color: #065F46;
+    }
+
+    .trend-down {
+        background-color: #FEE2E2;
+        color: #B91C1C;
+    }
+
+    /* Responsive */
+    @@media (max-width: 768px) {
+        .metrics-panel {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .metrics-panel {
+            grid-template-columns: 1fr;
+        }
+
+        .metric-card {
+            padding: 1.2rem;
+        }
+
+        .metric-icon {
+            width: 45px;
+            height: 45px;
+            font-size: 1.2rem;
+        }
+
+        .metric-value {
+            font-size: 1.4rem;
+        }
+
 
 </style>
+
+<!-- Agregar Font Awesome para los íconos -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" />
