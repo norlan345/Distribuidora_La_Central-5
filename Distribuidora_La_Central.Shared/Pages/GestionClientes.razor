@@ -1,5 +1,6 @@
 ﻿@page "/gestionclientes"
 @inject HttpClient Http
+@using System.Text.Json
 
 <div class="gestor-clientes">
     <h3 class="titulo-principal">Gestión de Clientes</h3>
@@ -48,11 +49,17 @@
                         <input type="text" @bind="nuevoCliente.direccion" placeholder="Dirección completa" />
                     </div>
 
-                   
+
 
                     <div class="grupo-formulario">
-                        <label>Creado por (ID usuario):</label>
-                        <input type="number" @bind="nuevoCliente.creado_por" placeholder="ID del usuario" />
+                        <label>Creado por:</label>
+                        <select @bind="nuevoCliente.creado_por">
+                            <option value="">Seleccione un usuario</option>
+                            @foreach (var usuario in listaUsuarios)
+                            {
+                                <option value="@usuario.idUsuario">@usuario.nombre (@usuario.rol)</option>
+                            }
+                        </select>
                     </div>
                 </div>
 
@@ -75,7 +82,8 @@
             <div class="encabezado-panel">
                 <h4>Lista de Clientes</h4>
                 <div class="busqueda">
-                    <input type="text" placeholder="Buscar clientes..." @bind="filtroBusqueda" />
+                    <input type="text" placeholder="Buscar clientes..." @bind="filtroBusqueda"
+                           @oninput="(e) => { filtroBusqueda = e.Value.ToString();  FiltrarClientes(); }" />
                     <i class="icono-buscar"></i>
                 </div>
             </div>
@@ -134,6 +142,15 @@
 
 
 @code {
+
+    public class Usuario
+    {
+        public int idUsuario { get; set; }
+        public string nombre { get; set; } = string.Empty;
+        public string rol { get; set; } = string.Empty;
+        public string codigoAcceso { get; set; } = string.Empty;
+    }
+    private List<Usuario> listaUsuarios = new List<Usuario>();
     List<Cliente> clientes = new();
     List<Cliente> clientesFiltrados = new();
     Cliente nuevoCliente = new();
@@ -143,8 +160,28 @@
     protected override async Task OnInitializedAsync()
     {
         await CargarClientes();
+        await CargarUsuarios();
     }
 
+
+    private async Task CargarUsuarios()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/Usuario/obtener-todos");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                listaUsuarios = JsonSerializer.Deserialize<List<Usuario>>(content);
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar usuarios: {ex.Message}");
+        }
+    }
 
 
     protected override void OnParametersSet()
